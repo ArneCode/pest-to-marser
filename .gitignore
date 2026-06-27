@@ -1,0 +1,4 @@
+/target
+/web/target/
+/web/pkg/
+*.wasm

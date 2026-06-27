@@ -1,0 +1,21 @@
+[package]
+name = "pest-to-marser"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pest-to-marser"
+path = "src/main.rs"
+
+[dependencies]
+marser = { path = "../marser" }
+prettyplease = "0.2"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[dev-dependencies]
+pest = { path = "../pest/pest" }
+pest_derive = { path = "../pest/derive" }

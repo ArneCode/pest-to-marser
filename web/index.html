@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pest-to-marser</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #212121;
+      color: #eeffff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #aaa;
+    }
+
+    label input {
+      background: #2d2d2d;
+      border: 1px solid #444;
+      color: #eeffff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.875rem;
+      width: 8rem;
+    }
+
+    .panes {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    .pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .pane + .pane {
+      border-left: 1px solid #333;
+    }
+
+    .pane-header {
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #888;
+      background: #252526;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    .editor-host {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .editor-host .CodeMirror {
+      height: 100%;
+      font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+      font-size: 0.875rem;
+    }
+
+    .cm-s-material-darker .cm-def { color: #82aaff; font-weight: bold; }
+    .cm-s-material-darker .cm-builtin { color: #82aaff; }
+    .cm-s-material-darker .cm-modifier { color: #ffcb6b; }
+
+    #error {
+      padding: 0.5rem 1rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8125rem;
+      color: #f48771;
+      background: #2d1f1f;
+      border-top: 1px solid #5a2d2d;
+      white-space: pre-wrap;
+      flex-shrink: 0;
+      min-height: 2rem;
+    }
+
+    #error:empty {
+      display: none;
+    }
+
+    #status {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>pest-to-marser</h1>
+    <label>
+      Entry rule
+      <input type="text" id="entry-rule" value="main" spellcheck="false">
+    </label>
+    <span id="status">Loading…</span>
+  </header>
+
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-header">Pest grammar</div>
+      <div id="pest-editor" class="editor-host"></div>
+    </div>
+    <div class="pane">
+      <div class="pane-header">Marser Rust output</div>
+      <div id="rust-editor" class="editor-host"></div>
+    </div>
+  </div>
+
+  <div id="error"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/mode/simple.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/rust/rust.min.js"></script>
+  <script>
+    (function () {
+      var BUILTINS = {
+        SOI: 1, EOI: 1, ANY: 1,
+        ASCII_ALPHA: 1, ASCII_ALPHANUMERIC: 1, ASCII_DIGIT: 1, ASCII_HEXDIGIT: 1,
+        ASCII_BIN: 1, ASCII_OCT: 1, ASCII_PUNCT: 1, ASCII_LOWER: 1, ASCII_UPPER: 1,
+      };
+
+      CodeMirror.defineMode("pest", function () {
+        return {
+          startState: function () {
+            return { lineStart: true };
+          },
+          token: function (stream, state) {
+            if (stream.sol()) {
+              state.lineStart = true;
+            }
+
+            if (stream.eatSpace()) {
+              return null;
+            }
+
+            if (stream.match("//")) {
+              stream.skipToEnd();
+              state.lineStart = false;
+              return "comment";
+            }
+
+            if (stream.match('"')) {
+              while (!stream.eol()) {
+                var ch = stream.next();
+                if (ch === null) break;
+                if (ch === '"') break;
+                if (ch === "\\") stream.next();
+              }
+              state.lineStart = false;
+              return "string";
+            }
+
+            if (stream.match(/[@_$]/)) {
+              state.lineStart = false;
+              return "modifier";
+            }
+
+            if (stream.match(/[!&]/)) {
+              state.lineStart = false;
+              return "operator";
+            }
+
+            if (stream.match(/[a-zA-Z_][a-zA-Z0-9_]*/)) {
+              var word = stream.current();
+              if (BUILTINS[word]) {
+                state.lineStart = false;
+                return "builtin";
+              }
+
+              if (state.lineStart) {
+                var saved = stream.pos;
+                stream.eatSpace();
+                stream.match(/[@_$]*/);
+                stream.eatSpace();
+                if (stream.peek() === "=") {
+                  state.lineStart = false;
+                  return "def";
+                }
+                stream.pos = saved;
+              }
+
+              state.lineStart = false;
+              return "variable";
+            }
+
+            if (stream.match(/[=~|*+?,(){}]/)) {
+              state.lineStart = false;
+              return "operator";
+            }
+
+            stream.next();
+            state.lineStart = false;
+            return null;
+          },
+        };
+      });
+    })();
+  </script>
+
+  <script type="module">
+    const DEFAULT_PEST = `WHITESPACE = _{ " " | "\\t" | newline }
+COMMENT = _{ line_comment }
+newline = _{ "\\n" | "\\r\\n" }
+line_comment = _{ "//" ~ (!newline ~ ANY)* }
+
+main = { SOI ~ item ~ ("," ~ item)* ~ EOI }
+item = { ident ~ "=" ~ number }
+ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
+number = @{ ASCII_DIGIT+ }
+`;
+
+    const entryRule = document.getElementById("entry-rule");
+    const errorEl = document.getElementById("error");
+    const statusEl = document.getElementById("status");
+
+    const pestEditor = CodeMirror(document.getElementById("pest-editor"), {
+      value: DEFAULT_PEST,
+      mode: "pest",
+      theme: "material-darker",
+      lineNumbers: true,
+      indentUnit: 2,
+      tabSize: 2,
+    });
+
+    const rustEditor = CodeMirror(document.getElementById("rust-editor"), {
+      value: "",
+      mode: "rust",
+      theme: "material-darker",
+      lineNumbers: true,
+      readOnly: true,
+      lineWrapping: true,
+    });
+
+    let debounceTimer = null;
+    let convertFn = null;
+
+    function setEditorContent(editor, text) {
+      if (editor.getValue() === text) return;
+      const scroll = editor.getScrollInfo();
+      editor.setValue(text);
+      editor.refresh();
+      editor.scrollTo(scroll.left, scroll.top);
+    }
+
+    function runConvert() {
+      if (!convertFn) return;
+
+      const source = pestEditor.getValue();
+      const entry = entryRule.value.trim();
+
+      try {
+        const code = convertFn(source, entry);
+        setEditorContent(rustEditor, code);
+        errorEl.textContent = "";
+        statusEl.textContent = "OK";
+        statusEl.style.color = "#4ec9b0";
+      } catch (err) {
+        setEditorContent(rustEditor, "");
+        errorEl.textContent = String(err);
+        statusEl.textContent = "Error";
+        statusEl.style.color = "#f48771";
+      }
+    }
+
+    function scheduleConvert() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(runConvert, 300);
+    }
+
+    pestEditor.on("change", scheduleConvert);
+    entryRule.addEventListener("input", scheduleConvert);
+
+    function refreshEditorSizes() {
+      const pestHost = document.getElementById("pest-editor");
+      const rustHost = document.getElementById("rust-editor");
+      pestEditor.setSize(null, pestHost.clientHeight);
+      rustEditor.setSize(null, rustHost.clientHeight);
+    }
+
+    window.addEventListener("resize", refreshEditorSizes);
+    requestAnimationFrame(refreshEditorSizes);
+
+    try {
+      const wasm = await import("./pkg/web.js");
+      await wasm.default();
+      convertFn = wasm.convert;
+      statusEl.textContent = "Ready";
+      statusEl.style.color = "#666";
+      runConvert();
+    } catch (err) {
+      statusEl.textContent = "WASM load failed";
+      statusEl.style.color = "#f48771";
+      errorEl.textContent = String(err);
+    }
+  </script>
+</body>
+</html>
