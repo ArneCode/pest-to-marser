@@ -6,6 +6,8 @@ The generated output is a single `grammar()` function that returns a Marser pars
 
 **Try it in the browser:** [https://pest-to-marser.arnedebo.com](https://pest-to-marser.arnedebo.com) — paste a grammar, preview the Rust output, download a Cargo project, or share a link.
 
+> **Note:** This project was almost entirely vibe coded. If you run into bugs or rough edges, feel free to [open an issue](https://github.com/ArneCode/pest-to-marser/issues).
+
 ## Install
 
 ```bash

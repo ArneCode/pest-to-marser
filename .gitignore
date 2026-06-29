@@ -1,3 +1,4 @@
+.cursor/debug-*.log
 /target
 /web/target/
 /web/pkg/
