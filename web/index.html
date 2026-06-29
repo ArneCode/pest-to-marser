@@ -127,7 +127,7 @@
     <h1>pest-to-marser</h1>
     <label>
       Entry rule
-      <input type="text" id="entry-rule" value="main" spellcheck="false">
+      <input type="text" id="entry-rule" value="" placeholder="last rule" spellcheck="false">
     </label>
     <span id="status">Loading…</span>
   </header>
@@ -235,6 +235,9 @@
   </script>
 
   <script type="module">
+    const STORAGE_KEY_PEST = "pest-to-marser.pest";
+    const STORAGE_KEY_ENTRY = "pest-to-marser.entry-rule";
+
     const DEFAULT_PEST = `WHITESPACE = _{ " " | "\\t" | newline }
 COMMENT = _{ line_comment }
 newline = _{ "\\n" | "\\r\\n" }
@@ -246,12 +249,34 @@ ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 number = @{ ASCII_DIGIT+ }
 `;
 
+    function loadSaved(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+
+    function save(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        // ignore quota / private browsing errors
+      }
+    }
+
     const entryRule = document.getElementById("entry-rule");
     const errorEl = document.getElementById("error");
     const statusEl = document.getElementById("status");
 
+    const savedPest = loadSaved(STORAGE_KEY_PEST);
+    const savedEntry = loadSaved(STORAGE_KEY_ENTRY);
+    if (savedEntry !== null) {
+      entryRule.value = savedEntry;
+    }
+
     const pestEditor = CodeMirror(document.getElementById("pest-editor"), {
-      value: DEFAULT_PEST,
+      value: savedPest ?? DEFAULT_PEST,
       mode: "pest",
       theme: "material-darker",
       lineNumbers: true,
@@ -304,8 +329,14 @@ number = @{ ASCII_DIGIT+ }
       debounceTimer = setTimeout(runConvert, 300);
     }
 
-    pestEditor.on("change", scheduleConvert);
-    entryRule.addEventListener("input", scheduleConvert);
+    pestEditor.on("change", () => {
+      save(STORAGE_KEY_PEST, pestEditor.getValue());
+      scheduleConvert();
+    });
+    entryRule.addEventListener("input", () => {
+      save(STORAGE_KEY_ENTRY, entryRule.value);
+      scheduleConvert();
+    });
 
     function refreshEditorSizes() {
       const pestHost = document.getElementById("pest-editor");

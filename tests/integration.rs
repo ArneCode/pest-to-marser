@@ -84,7 +84,90 @@ fn calc_grammar_generates_recursive_block() {
         },
     )
     .expect("calc grammar should convert");
-    assert!(code.contains("recursive"));
+    assert!(code.contains("recursive("));
+    assert!(!code.contains("recursive2"));
+    assert!(!code.contains("recursive3"));
+    assert!(code.contains("let factor ="));
+    assert!(code.contains("let term ="));
+}
+
+#[test]
+fn repeat_once_only_emits_repeat_once_helper() {
+    let src = r#"
+WHITESPACE = _{ " " }
+main = { SOI ~ "a"+ ~ EOI }
+"#;
+    let code = convert_pest_source(
+        src,
+        &ConvertOptions {
+            entry_rule: "main".to_string(),
+            ..Default::default()
+        },
+    )
+    .expect("repeat-once grammar should convert");
+
+    assert!(code.contains("fn repeat_one_or_more_ws"));
+    assert!(!code.contains("fn repeat_ws"));
+}
+
+mod generated_calc {
+    include!("generated/calc.rs");
+}
+
+#[test]
+fn generated_calc_compiles_and_parses() {
+    use generated_calc::grammar;
+
+    assert!(grammar().parse_str("1").is_ok());
+    assert!(grammar().parse_str("1+2").is_ok());
+    assert!(grammar().parse_str("1+2*3").is_ok());
+    assert!(grammar().parse_str("(1+2)*3").is_ok());
+    assert!(grammar().parse_str("1 + 2 * 3").is_ok());
+    assert!(grammar().parse_str("").is_err());
+    assert!(grammar().parse_str("1+").is_err());
+}
+
+mod e2e_calc {
+    use marser::parser::Parser as MarserParser;
+    use pest::Parser;
+    use pest_derive::Parser as PestDerive;
+
+    #[derive(PestDerive)]
+    #[grammar = "tests/fixtures/calc.pest"]
+    struct CalcPest;
+
+    mod generated {
+        include!("generated/calc.rs");
+    }
+
+    fn pest_accepts(input: &str) -> bool {
+        CalcPest::parse(Rule::expr, input).is_ok()
+    }
+
+    fn marser_accepts(input: &str) -> bool {
+        generated::grammar().parse_str(input).is_ok()
+    }
+
+    #[test]
+    fn accept_reject_corpora_match() {
+        let inputs = [
+            "1",
+            "1+2",
+            "1+2*3",
+            "(1+2)*3",
+            "1 + 2 * 3",
+            "10/2-3",
+            "",
+            "((1)",
+        ];
+        for input in inputs {
+            assert_eq!(
+                pest_accepts(input),
+                marser_accepts(input),
+                "mismatch on input: {input:?}"
+            );
+        }
+    }
 }
 
 mod generated_simple {

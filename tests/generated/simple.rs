@@ -1,24 +1,27 @@
 use marser::capture;
 use marser::matcher::{
-    AnyToken, MatcherCombinator, many, negative_lookahead, one_or_more,
+    AnyToken, Matcher, MatcherCombinator, many, negative_lookahead, one_or_more,
     optional, positive_lookahead, start_of_input, end_of_input,
 };
 use marser::one_of::one_of;
 use marser::parser::{
     DeferredWeak, Parser, ParserCombinator, recursive};
 
+// Pest inserts implicit whitespace between repetitions, but not before the
+// first item. This keeps `X*` equivalent to Pest while avoiding duplicated
+// generated matcher bodies.
+fn repeat_ws<'src, MRes, Item, Ws>(
+    item: Item,
+    ws: Ws,
+) -> impl Matcher<'src, &'src str, MRes> + Clone
+where
+    Item: Matcher<'src, &'src str, MRes> + Clone,
+    Ws: Matcher<'src, &'src str, MRes> + Clone,
+{
+    optional((item.clone(), many((ws, item))))
+}
+
 pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
-    let number = capture!(
-        one_or_more('0'..='9') => ()
-    ).erase_types();
-
-    let ident = capture!(
-        (
-            one_of(('_', one_of(('a'..='z', 'A'..='Z')))),
-            many(one_of(('_', one_of(('a'..='z', 'A'..='Z', '0'..='9'))))),
-        ) => ()
-    ).erase_types();
-
     let newline = capture!(
         one_of(('\n', "\r\n")) => ()
     ).erase_types();
@@ -33,6 +36,17 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
 
     let COMMENT = capture!(
         line_comment.clone().ignore_result() => ()
+    ).erase_types();
+
+    let number = capture!(
+        one_or_more('0'..='9') => ()
+    ).erase_types();
+
+    let ident = capture!(
+        (
+            one_of(('_', one_of(('a'..='z', 'A'..='Z')))),
+            many(one_of(('_', one_of(('a'..='z', 'A'..='Z', '0'..='9'))))),
+        ) => ()
     ).erase_types();
 
     let ws = many(
@@ -55,10 +69,7 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
             ws.clone(),
             item.clone().ignore_result(),
             ws.clone(),
-            optional((
-                (',', ws.clone(), item.clone().ignore_result()),
-                many((ws.clone(), (',', ws.clone(), item.clone().ignore_result()))),
-            )),
+            repeat_ws((',', ws.clone(), item.clone().ignore_result()), ws.clone()),
             ws.clone(),
             end_of_input(),
         ) => ()

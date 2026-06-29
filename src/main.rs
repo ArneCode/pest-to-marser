@@ -3,20 +3,21 @@ use std::{env, fs, process};
 use pest_to_marser::{ConvertOptions, convert_pest_source};
 
 fn usage() -> ! {
-    eprintln!("usage: pest-to-marser <grammar.pest> <entry_rule> [--output <path>]");
+    eprintln!("usage: pest-to-marser <grammar.pest> [entry_rule] [--output <path>]");
     process::exit(1);
 }
 
 fn main() {
     let mut args = env::args().skip(1);
     let path = args.next().unwrap_or_else(|| usage());
-    let entry_rule = args.next().unwrap_or_else(|| usage());
-
+    let mut entry_rule = String::new();
     let mut output_path = None;
     let mut arg_iter = args;
     while let Some(arg) = arg_iter.next() {
         if arg == "--output" {
             output_path = Some(arg_iter.next().unwrap_or_else(|| usage()));
+        } else if entry_rule.is_empty() {
+            entry_rule = arg;
         } else {
             eprintln!("unknown argument: {arg}");
             usage();

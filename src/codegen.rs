@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use syn::parse_quote;
 
@@ -7,7 +9,9 @@ use crate::ast::PrefixOp;
 use crate::error::ConvertError;
 use crate::expr::{Builtin, Expr, MatchingContext, SymKey};
 use crate::normalize::{RuleDef, RuleTable};
-use crate::scc::{Scc, condensation_topo, is_cyclic, tarjan_scc};
+use crate::scc::{
+    Scc, condensation_topo, is_cyclic, partition_scc_for_recursion, recursive_arity, tarjan_scc,
+};
 use crate::specialize::{SpecializationGraph, build_specialization_graph, callee_context};
 
 const RUST_KEYWORDS: &[&str] = &[
@@ -16,6 +20,34 @@ const RUST_KEYWORDS: &[&str] = &[
     "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
     "super", "trait", "true", "type", "unsafe", "use", "where", "while", "yield",
 ];
+
+static AGENT_DEBUG_LOG_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: String) {
+    if AGENT_DEBUG_LOG_COUNT.fetch_add(1, Ordering::Relaxed) >= 10 {
+        return;
+    }
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/home/arne/projects/parsing/pest-to-marser/.cursor/debug-51eef6.log")
+    {
+        let _ = writeln!(
+            file,
+            "{{\"sessionId\":\"51eef6\",\"runId\":\"initial\",\"hypothesisId\":{:?},\"location\":{:?},\"message\":{:?},\"data\":{},\"timestamp\":{}}}",
+            hypothesis_id,
+            location,
+            message,
+            data,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
+    }
+    // #endregion
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CodegenMode {
@@ -50,6 +82,13 @@ fn codegen_format_err(detail: impl ToString) -> ConvertError {
     }
 }
 
+enum BodyLayout {
+    /// `capture!(` continues on the same line as `let name =`.
+    AssignmentContinuation,
+    /// The whole `capture!(...)` block is indented starting at `base_column`.
+    Block,
+}
+
 const WRAPPER_FN_BODY_INDENT: &str = "    ";
 
 /// Pretty-print a Rust expression and indent it for embedding at `column` spaces.
@@ -68,6 +107,20 @@ fn format_expr_str(source: &str, column: usize) -> Result<String, ConvertError> 
     let formatted = prettyplease::unparse(&file);
     let body = extract_fn_body_expr(&formatted)?;
     let normalized = dedent_lines(&strip_fn_body_indent(&body));
+    if normalized.lines().count() > source.lines().count() || source.len() > 80 {
+        agent_debug_log(
+            "H4",
+            "src/codegen.rs:format_expr_str",
+            "pretty formatter expanded expression layout",
+            format!(
+                "{{\"sourceChars\":{},\"sourceLines\":{},\"outputLines\":{},\"column\":{}}}",
+                source.len(),
+                source.lines().count(),
+                normalized.lines().count(),
+                column
+            ),
+        );
+    }
     Ok(indent_lines(&normalized, column))
 }
 
@@ -160,6 +213,8 @@ struct Generator<'a> {
     scc_map: HashMap<SymKey, usize>,
     referenced_builtins: HashSet<Builtin>,
     emitted: HashSet<SymKey>,
+    needs_ws_repeat_helper: bool,
+    needs_ws_repeat_once_helper: bool,
 }
 
 impl<'a> Generator<'a> {
@@ -209,6 +264,24 @@ impl<'a> Generator<'a> {
             extra_syms.insert(sym);
         }
 
+        let has_ws = table.has_whitespace || table.has_comment;
+        let needs_ws_repeat_helper = has_ws
+            && graph.nodes.iter().any(|sym| {
+                sym.context == MatchingContext::NormalWs
+                    && graph
+                        .rule_map
+                        .get(&sym.rule)
+                        .is_some_and(|rule| expr_needs_ws_repeat_helper(&rule.expr))
+            });
+        let needs_ws_repeat_once_helper = has_ws
+            && graph.nodes.iter().any(|sym| {
+                sym.context == MatchingContext::NormalWs
+                    && graph
+                        .rule_map
+                        .get(&sym.rule)
+                        .is_some_and(|rule| expr_needs_ws_repeat_once_helper(&rule.expr))
+            });
+
         Self {
             table,
             graph,
@@ -220,6 +293,8 @@ impl<'a> Generator<'a> {
             scc_map,
             referenced_builtins,
             emitted: HashSet::new(),
+            needs_ws_repeat_helper,
+            needs_ws_repeat_once_helper,
         }
     }
 
@@ -227,7 +302,15 @@ impl<'a> Generator<'a> {
         let mut out = String::new();
         out.push_str("use marser::capture;\n");
         out.push_str("use marser::matcher::{\n");
-        out.push_str("    AnyToken, MatcherCombinator, many, negative_lookahead, one_or_more,\n");
+        if self.needs_ws_repeat_helper || self.needs_ws_repeat_once_helper {
+            out.push_str(
+                "    AnyToken, Matcher, MatcherCombinator, many, negative_lookahead, one_or_more,\n",
+            );
+        } else {
+            out.push_str(
+                "    AnyToken, MatcherCombinator, many, negative_lookahead, one_or_more,\n",
+            );
+        }
         out.push_str("    optional, positive_lookahead, start_of_input, end_of_input,\n");
         out.push_str("};\n");
         out.push_str("use marser::one_of::one_of;\n");
@@ -237,7 +320,7 @@ impl<'a> Generator<'a> {
             .sccs
             .iter()
             .filter(|scc| is_cyclic(scc))
-            .map(|scc| scc.members.len())
+            .map(|scc| recursive_arity(scc, self.graph))
             .max()
             .unwrap_or(1);
         if max_recursive > 1 {
@@ -246,6 +329,40 @@ impl<'a> Generator<'a> {
             }
         }
         out.push_str("};\n\n");
+        if self.needs_ws_repeat_helper {
+            out.push_str(
+                "// Pest inserts implicit whitespace between repetitions, but not before the\n\
+                 // first item. This keeps `X*` equivalent to Pest while avoiding duplicated\n\
+                 // generated matcher bodies.\n\
+                 fn repeat_ws<'src, MRes, Item, Ws>(\n\
+                 \x20   item: Item,\n\
+                 \x20   ws: Ws,\n\
+                 ) -> impl Matcher<'src, &'src str, MRes> + Clone\n\
+                 where\n\
+                 \x20   Item: Matcher<'src, &'src str, MRes> + Clone,\n\
+                 \x20   Ws: Matcher<'src, &'src str, MRes> + Clone,\n\
+                 {\n\
+                 \x20   optional((item.clone(), many((ws, item))))\n\
+                 }\n\n",
+            );
+        }
+        if self.needs_ws_repeat_once_helper {
+            out.push_str(
+                "// Pest `X+` requires a first item, then implicit whitespace only between\n\
+                 // later repetitions. This helper preserves that shape without duplicating\n\
+                 // the generated matcher body for `X`.\n\
+                 fn repeat_one_or_more_ws<'src, MRes, Item, Ws>(\n\
+                 \x20   item: Item,\n\
+                 \x20   ws: Ws,\n\
+                 ) -> impl Matcher<'src, &'src str, MRes> + Clone\n\
+                 where\n\
+                 \x20   Item: Matcher<'src, &'src str, MRes> + Clone,\n\
+                 \x20   Ws: Matcher<'src, &'src str, MRes> + Clone,\n\
+                 {\n\
+                 \x20   (item.clone(), many((ws, item)))\n\
+                 }\n\n",
+            );
+        }
         out.push_str(&format!(
             "pub fn {}<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {{\n",
             sanitize_ident(&self.options.function_name)
@@ -381,47 +498,65 @@ impl<'a> Generator<'a> {
             return Ok(());
         }
         let name = self.sym_names[sym].clone();
-        out.push_str(&format!("    let {name} = {};\n\n", self.gen_body(sym, None)?));
+        out.push_str(&format!(
+            "    let {name} = {};\n\n",
+            self.gen_body(sym, None, 4, BodyLayout::AssignmentContinuation)?
+        ));
         self.emitted.insert(sym.clone());
         Ok(())
     }
 
     fn emit_recursive_scc(&mut self, out: &mut String, scc: &Scc) -> Result<(), ConvertError> {
-        let n = scc.members.len();
-        let names: Vec<String> = scc
-            .members
-            .iter()
-            .map(|s| self.sym_names[s].clone())
-            .collect();
-        let params: Vec<String> = names.iter().map(|n| format!("{n}_weak")).collect();
-
-        if n == 1 {
-            let sym = &scc.members[0];
-            let name = &names[0];
-            let body = indent_block(&self.gen_body(sym, Some(&scc.members))?, 8);
-            out.push_str(&format!(
-                "    let {name} = recursive(|{name}_weak|\n{body}\n    );\n\n"
-            ));
-            self.emitted.insert(sym.clone());
+        if scc.members.iter().all(|m| self.emitted.contains(m)) {
             return Ok(());
         }
 
-        out.push_str(&format!(
-            "    let ({}) = recursive{n}(|{}| (\n",
-            names.join(", "),
-            params.join(", ")
-        ));
-        for (idx, sym) in scc.members.iter().enumerate() {
-            let body = indent_block(&self.gen_body(sym, Some(&scc.members))?, 8);
-            let sep = if idx + 1 == scc.members.len() {
-                ""
-            } else {
-                ","
-            };
-            out.push_str(&format!("{body}{sep}\n"));
-            self.emitted.insert(sym.clone());
+        let (fvs, non_fvs_topo) = partition_scc_for_recursion(scc, self.graph);
+        let fvs_refs = &fvs;
+
+        let mut locals = String::new();
+        for sym in &non_fvs_topo {
+            let name = self.sym_names[sym].clone();
+            let body = self.gen_body(sym, Some(fvs_refs), 8, BodyLayout::AssignmentContinuation)?;
+            locals.push_str(&format!("        let {name} = {body};\n\n"));
         }
-        out.push_str("    ));\n\n");
+
+        let fvs_names: Vec<String> = fvs.iter().map(|s| self.sym_names[s].clone()).collect();
+        let fvs_params: Vec<String> = fvs_names.iter().map(|n| format!("{n}_weak")).collect();
+        let n = fvs.len();
+
+        if n == 1 {
+            let fvs_sym = &fvs[0];
+            let fvs_name = &fvs_names[0];
+            let fvs_body = self.gen_body(fvs_sym, Some(fvs_refs), 8, BodyLayout::Block)?;
+            if non_fvs_topo.is_empty() {
+                out.push_str(&format!(
+                    "    let {fvs_name} = recursive(|{fvs_name}_weak|\n{fvs_body}\n    );\n\n"
+                ));
+            } else {
+                out.push_str(&format!(
+                    "    let {fvs_name} = recursive(|{fvs_name}_weak| {{\n{locals}{fvs_body}\n    }});\n\n"
+                ));
+            }
+        } else {
+            out.push_str(&format!(
+                "    let ({}) = recursive{n}(|{}| {{\n",
+                fvs_names.join(", "),
+                fvs_params.join(", ")
+            ));
+            out.push_str(&locals);
+            out.push_str("        (\n");
+            for (idx, sym) in fvs.iter().enumerate() {
+                let body = self.gen_body(sym, Some(fvs_refs), 12, BodyLayout::Block)?;
+                let sep = if idx + 1 == fvs.len() { "" } else { "," };
+                out.push_str(&format!("{body}{sep}\n"));
+            }
+            out.push_str("        )\n    });\n\n");
+        }
+
+        for member in &scc.members {
+            self.emitted.insert(member.clone());
+        }
         Ok(())
     }
 
@@ -429,6 +564,8 @@ impl<'a> Generator<'a> {
         &self,
         sym: &SymKey,
         recursive_members: Option<&[SymKey]>,
+        base_column: usize,
+        layout: BodyLayout,
     ) -> Result<String, ConvertError> {
         let rule = &self.graph.rule_map[&sym.rule];
         let inner = self.gen_expr(
@@ -437,10 +574,31 @@ impl<'a> Generator<'a> {
             recursive_members,
             CodegenMode::Matcher,
         );
-        let formatted_grammar = format_expr_str(&inner, 8)?;
-        Ok(format!(
-            "capture!(\n{formatted_grammar} => ()\n    ).erase_types()"
-        ))
+        agent_debug_log(
+            "H1,H5",
+            "src/codegen.rs:gen_body",
+            "rule normalized expression and emitted matcher body",
+            format!(
+                "{{\"rule\":{:?},\"context\":{:?},\"expr\":{:?},\"body\":{:?}}}",
+                sym.rule, sym.context, rule.expr, inner
+            ),
+        );
+        let inner_column = match layout {
+            BodyLayout::AssignmentContinuation => base_column + 4,
+            BodyLayout::Block => 4,
+        };
+        let formatted_grammar = format_expr_str(&inner, inner_column)?;
+        let close_indent = match layout {
+            BodyLayout::AssignmentContinuation => " ".repeat(base_column),
+            BodyLayout::Block => String::new(),
+        };
+        let capture = format!(
+            "capture!(\n{formatted_grammar} => ()\n{close_indent}).erase_types()"
+        );
+        Ok(match layout {
+            BodyLayout::AssignmentContinuation => capture,
+            BodyLayout::Block => indent_lines(&capture, base_column),
+        })
     }
 
     fn gen_expr(
@@ -495,6 +653,19 @@ impl<'a> Generator<'a> {
             }
             parts.push(self.gen_expr(item, ctx, recursive_members, mode));
         }
+        if has_ws && ctx == MatchingContext::NormalWs && items.len() > 1 {
+            agent_debug_log(
+                "H2",
+                "src/codegen.rs:gen_sequence",
+                "normal-context sequence inserted whitespace matchers",
+                format!(
+                    "{{\"itemCount\":{},\"insertedWhitespace\":{},\"parts\":{:?}}}",
+                    items.len(),
+                    items.len().saturating_sub(1),
+                    parts
+                ),
+            );
+        }
         if mode == CodegenMode::Matcher {
             format!("({})", parts.join(", "))
         } else {
@@ -533,9 +704,29 @@ impl<'a> Generator<'a> {
     ) -> String {
         if self.uses_ws(ctx) {
             if !at_least_one {
-                return format!("optional(({inner}, many((ws.clone(), {inner}))))");
+                let rendered = format!("repeat_ws({inner}, ws.clone())");
+                agent_debug_log(
+                    "H3",
+                    "src/codegen.rs:gen_unbounded_repeat",
+                    "whitespace-aware zero-or-more lowered through helper",
+                    format!(
+                        "{{\"atLeastOne\":{},\"usesWhitespace\":true,\"inner\":{:?},\"rendered\":{:?}}}",
+                        at_least_one, inner, rendered
+                    ),
+                );
+                return rendered;
             }
-            return format!("({inner}, many((ws.clone(), {inner})))");
+            let rendered = format!("repeat_one_or_more_ws({inner}, ws.clone())");
+            agent_debug_log(
+                "H3",
+                "src/codegen.rs:gen_unbounded_repeat",
+                "whitespace-aware one-or-more lowered through helper",
+                format!(
+                    "{{\"atLeastOne\":{},\"usesWhitespace\":true,\"inner\":{:?},\"rendered\":{:?}}}",
+                    at_least_one, inner, rendered
+                ),
+            );
+            return rendered;
         }
         if !at_least_one {
             return format!("many({inner})");
@@ -800,6 +991,45 @@ fn collect_builtins(expr: &Expr, out: &mut HashSet<Builtin>) {
             }
         }
         _ => {}
+    }
+}
+
+fn expr_needs_ws_repeat_helper(expr: &Expr) -> bool {
+    match expr {
+        Expr::Postfix { expr, op } => {
+            matches!(
+                op,
+                PostfixOp::Repeat | PostfixOp::RepeatMin(0)
+            ) || expr_needs_ws_repeat_helper(expr)
+        }
+        Expr::Sequence(items) | Expr::Choice(items) => {
+            items.iter().any(expr_needs_ws_repeat_helper)
+        }
+        Expr::Prefix { expr, .. } => expr_needs_ws_repeat_helper(expr),
+        Expr::Empty
+        | Expr::Builtin(_)
+        | Expr::RuleRef(_)
+        | Expr::Literal(_)
+        | Expr::InsensitiveLiteral(_)
+        | Expr::Range { .. } => false,
+    }
+}
+
+fn expr_needs_ws_repeat_once_helper(expr: &Expr) -> bool {
+    match expr {
+        Expr::Postfix { expr, op } => {
+            matches!(op, PostfixOp::RepeatOnce) || expr_needs_ws_repeat_once_helper(expr)
+        }
+        Expr::Sequence(items) | Expr::Choice(items) => {
+            items.iter().any(expr_needs_ws_repeat_once_helper)
+        }
+        Expr::Prefix { expr, .. } => expr_needs_ws_repeat_once_helper(expr),
+        Expr::Empty
+        | Expr::Builtin(_)
+        | Expr::RuleRef(_)
+        | Expr::Literal(_)
+        | Expr::InsensitiveLiteral(_)
+        | Expr::Range { .. } => false,
     }
 }
 
