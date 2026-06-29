@@ -1,4 +1,4 @@
 WHITESPACE = _{ " " }
-main = { SOI ~ word ~ EOI }
+main = { SOI ~ #word = word ~ EOI }
 word = ${ letter+ }
 letter = { ASCII_ALPHA }

@@ -43,8 +43,8 @@ pub enum Parsed<'src> {
         item_val: Vec<Box<Parsed<'src>>>,
     },
     item {
-        ident_val: Box<Parsed<'src>>,
-        number_val: Box<Parsed<'src>>,
+        name: Box<Parsed<'src>>,
+        value: Box<Parsed<'src>>,
     },
     ident { value: &'src str },
     number { value: &'src str },
@@ -106,9 +106,9 @@ bind_slice!(
         one_of((WHITESPACE.clone().ignore_result(), COMMENT.clone().ignore_result()))
     );
 
-    // item = { ident ~ "=" ~ number }
+    // item = { #name = ident ~ "=" ~ #value = number }
     let item = capture!(
-        (bind!(ident.clone(), ident_val), ws.clone(), '=', ws.clone(), bind!(number.clone(), number_val)) => Parsed::item { ident_val: Box::new(ident_val), number_val: Box::new(number_val) }
+        (bind!(ident.clone(), name), ws.clone(), '=', ws.clone(), bind!(number.clone(), value)) => Parsed::item { name: Box::new(name), value: Box::new(value) }
     );
 
     // main = { SOI ~ item ~ ("," ~ item)* ~ EOI }

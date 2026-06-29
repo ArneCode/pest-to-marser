@@ -17,8 +17,8 @@ use marser::parser::{
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
     main {
-        sign_val: Option<Box<Parsed<'src>>>,
-        digits_val: Box<Parsed<'src>>,
+        sign: Option<Box<Parsed<'src>>>,
+        digits: Box<Parsed<'src>>,
     },
     sign { value: &'src str },
     digits { value: &'src str },
@@ -55,7 +55,7 @@ bind_slice!(
     ) => Parsed::digits { value }
     );
 
-    // main = { SOI ~ sign? ~ digits ~ EOI }
+    // main = { SOI ~ #sign = sign? ~ #digits = digits ~ EOI }
     let main = capture!(
         (
             start_of_input(),
@@ -65,7 +65,7 @@ bind_slice!(
             bind!(digits.clone(), digits_val),
             ws.clone(),
             end_of_input(),
-        ) => Parsed::main { sign_val: sign_val.map(Box::new), digits_val: Box::new(digits_val) }
+        ) => Parsed::main { sign: sign_val.map(Box::new), digits: Box::new(digits_val) }
     );
 
     main.clone()

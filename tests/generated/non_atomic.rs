@@ -29,10 +29,11 @@ where
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
     main {
-        spaced_val: Box<Parsed<'src>>,
+        spaced: Box<Parsed<'src>>,
     },
     spaced {
-        letter_val: Vec<Box<Parsed<'src>>>,
+        first: Box<Parsed<'src>>,
+        rest: Vec<Box<Parsed<'src>>>,
     },
     letter { value: &'src str },
 }
@@ -60,18 +61,18 @@ bind_slice!(
         WHITESPACE.clone().ignore_result()
     );
 
-    // spaced = !{ letter ~ ((" " ~ letter)+) }
+    // spaced = !{ #first = letter ~ ((" " ~ #rest = letter)+) }
     let spaced = capture!(
         (
-            bind!(letter.clone(), *letter_val),
+            bind!(letter.clone(), first),
             ws.clone(),
-            repeat_one_or_more_ws((' ', ws.clone(), bind!(letter.clone(), *letter_val)), ws.clone()),
-        ) => Parsed::spaced { letter_val: letter_val.into_iter().map(Box::new).collect() }
+            repeat_one_or_more_ws((' ', ws.clone(), bind!(letter.clone(), *rest)), ws.clone()),
+        ) => Parsed::spaced { first: Box::new(first), rest: rest.into_iter().map(Box::new).collect() }
     );
 
-    // main = { SOI ~ spaced ~ EOI }
+    // main = { SOI ~ #spaced = spaced ~ EOI }
     let main = capture!(
-        (start_of_input(), ws.clone(), bind!(spaced.clone(), spaced_val), ws.clone(), end_of_input()) => Parsed::main { spaced_val: Box::new(spaced_val) }
+        (start_of_input(), ws.clone(), bind!(spaced.clone(), spaced_val), ws.clone(), end_of_input()) => Parsed::main { spaced: Box::new(spaced_val) }
     );
 
     main.clone()

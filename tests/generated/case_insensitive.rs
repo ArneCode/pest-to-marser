@@ -20,7 +20,9 @@ fn ci_ch<'src, MRes>(c: char) -> impl Matcher<'src, &'src str, MRes> + Clone {
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
     main {
-        ident_val: Box<Parsed<'src>>,
+        select: &'src str,
+        from: &'src str,
+        table: Box<Parsed<'src>>,
     },
     ident { value: &'src str },
 }
@@ -53,19 +55,19 @@ bind_slice!(
         WHITESPACE.clone().ignore_result()
     );
 
-    // main = { SOI ~ ^"select" ~ ^"from" ~ ident ~ EOI }
+    // main = { SOI ~ #select = ^"select" ~ #from = ^"from" ~ #table = ident ~ EOI }
     let main = capture!(
         (
             start_of_input(),
             ws.clone(),
-            (ci_ch('s'), ci_ch('e'), ci_ch('l'), ci_ch('e'), ci_ch('c'), ci_ch('t')),
+            bind_slice!((ci_ch('s'), ci_ch('e'), ci_ch('l'), ci_ch('e'), ci_ch('c'), ci_ch('t')), select as &'src str),
             ws.clone(),
-            (ci_ch('f'), ci_ch('r'), ci_ch('o'), ci_ch('m')),
+            bind_slice!((ci_ch('f'), ci_ch('r'), ci_ch('o'), ci_ch('m')), from as &'src str),
             ws.clone(),
-            bind!(ident.clone(), ident_val),
+            bind!(ident.clone(), table),
             ws.clone(),
             end_of_input(),
-        ) => Parsed::main { ident_val: Box::new(ident_val) }
+        ) => Parsed::main { select: select, from: from, table: Box::new(table) }
     );
 
     main.clone()

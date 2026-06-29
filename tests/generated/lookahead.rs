@@ -32,7 +32,8 @@ where
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
     main {
-        ident_val: Box<Parsed<'src>>,
+        id: Box<Parsed<'src>>,
+        prefix: Vec<&'src str>,
     },
     ident { value: &'src str },
 }
@@ -65,19 +66,19 @@ bind_slice!(
         WHITESPACE.clone().ignore_result()
     );
 
-    // main = { SOI ~ ident ~ (!"end" ~ ANY)* ~ "end" ~ EOI }
+    // main = { SOI ~ #id = ident ~ #prefix = (!"end" ~ ANY)* ~ "end" ~ EOI }
     let main = capture!(
         (
             start_of_input(),
             ws.clone(),
-            bind!(ident.clone(), ident_val),
+            bind!(ident.clone(), id),
             ws.clone(),
-            repeat_ws((negative_lookahead("end"), ws.clone(), AnyToken), ws.clone()),
+            bind_slice!(repeat_ws((negative_lookahead("end"), ws.clone(), AnyToken), ws.clone()), *prefix as &'src str),
             ws.clone(),
             "end",
             ws.clone(),
             end_of_input(),
-        ) => Parsed::main { ident_val: Box::new(ident_val) }
+        ) => Parsed::main { id: Box::new(id), prefix: prefix }
     );
 
     main.clone()

@@ -4,6 +4,6 @@ newline = _{ "\n" | "\r\n" }
 line_comment = _{ "//" ~ (!newline ~ ANY)* }
 
 main = { SOI ~ item ~ ("," ~ item)* ~ EOI }
-item = { ident ~ "=" ~ number }
+item = { #name = ident ~ "=" ~ #value = number }
 ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 number = @{ ASCII_DIGIT+ }

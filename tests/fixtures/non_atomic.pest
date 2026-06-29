@@ -1,4 +1,4 @@
 WHITESPACE = _{ " " }
-main = { SOI ~ spaced ~ EOI }
-spaced = !{ letter ~ ((" " ~ letter)+) }
+main = { SOI ~ #spaced = spaced ~ EOI }
+spaced = !{ #first = letter ~ ((" " ~ #rest = letter)+) }
 letter = @{ ASCII_ALPHA }

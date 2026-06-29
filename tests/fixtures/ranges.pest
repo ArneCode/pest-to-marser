@@ -1,4 +1,4 @@
 WHITESPACE = _{ " " }
 main = { SOI ~ hex_color ~ EOI }
-hex_color = { "#" ~ hex_digit{6} }
+hex_color = { "#" ~ #body = hex_digit{6} }
 hex_digit = _{ '0'..'9' | 'a'..'f' | 'A'..'F' }

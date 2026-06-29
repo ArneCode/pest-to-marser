@@ -11,13 +11,14 @@ use marser::parser::{
 pub enum Parsed<'src> {
     expr {
         term_val: Vec<Box<Parsed<'src>>>,
+        op: Vec<&'src str>,
     },
     term {
         factor_val: Vec<Box<Parsed<'src>>>,
+        op: Vec<&'src str>,
     },
     factor {
-        number_val: Option<Box<Parsed<'src>>>,
-        expr_val: Option<Box<Parsed<'src>>>,
+        inner: Vec<Box<Parsed<'src>>>,
     },
     number { value: &'src str },
     WHITESPACE { value: &'src str },

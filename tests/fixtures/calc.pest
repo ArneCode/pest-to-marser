@@ -1,5 +1,5 @@
-expr = { term ~ (("+" | "-") ~ term)* }
-term = { factor ~ (("*" | "/") ~ factor)* }
-factor = { number | "(" ~ expr ~ ")" }
+expr = { term ~ ( #op = ("+" | "-") ~ term )* }
+term = { factor ~ ( #op = ("*" | "/") ~ factor )* }
+factor = { #inner = number | "(" ~ #inner = expr ~ ")" }
 number = @{ ASCII_DIGIT+ }
 WHITESPACE = _{ " " | "\t" }

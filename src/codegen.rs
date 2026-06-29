@@ -11,8 +11,8 @@ use crate::error::ConvertError;
 use crate::expr::{Builtin, Expr, MatchingContext, SymKey};
 use crate::normalize::{RuleDef, RuleTable};
 use crate::output::{
-    analyze_rule_output, build_field_init, emit_parsed_enum, field_sigil_map, variant_name,
-    BindSigil, FieldKey, FieldKind, RuleOutputSpec,
+    analyze_rule_output, build_field_init, emit_parsed_enum, field_bind_var, field_sigil_map,
+    tagged_bind_var_name, variant_name, BindSigil, FieldKey, FieldKind, RuleOutputSpec,
 };
 use crate::scc::{
     Scc, condensation_topo, is_cyclic, partition_scc_for_recursion, recursive_arity, tarjan_scc,
@@ -162,16 +162,64 @@ const WRAPPER_FN_BODY_INDENT: &str = "    ";
 
 /// Replace each `bind!(...)` / `bind_slice!(...)` with a parseable placeholder so `syn` /
 /// `prettyplease` can format the surrounding expression, then restore afterward.
+fn is_ident_start(ch: u8) -> bool {
+    ch.is_ascii_alphabetic() || ch == b'_'
+}
+
+fn is_ident_continue(ch: u8) -> bool {
+    ch.is_ascii_alphanumeric() || ch == b'_'
+}
+
+fn skip_rust_single_quote_literal(bytes: &[u8], index: &mut usize) {
+    *index += 1;
+    if *index >= bytes.len() {
+        return;
+    }
+    if bytes[*index] == b'\\' {
+        *index += 1;
+        if *index < bytes.len() {
+            *index += 1;
+        }
+        if *index < bytes.len() && bytes[*index] == b'\'' {
+            *index += 1;
+        }
+        return;
+    }
+    if is_ident_start(bytes[*index]) {
+        while *index < bytes.len() && is_ident_continue(bytes[*index]) {
+            *index += 1;
+        }
+        // `'s'` char literal: ident immediately followed by `'`.
+        // `'src` lifetime: ident followed by anything else.
+        if *index < bytes.len() && bytes[*index] == b'\'' {
+            *index += 1;
+        }
+        return;
+    }
+    // Any other single-character char literal, e.g. `'+'`.
+    *index += 1;
+    if *index < bytes.len() && bytes[*index] == b'\'' {
+        *index += 1;
+    }
+}
+
+fn peel_single_postfix<'a>(expr: &'a Expr) -> (&'a Expr, Option<&'a PostfixOp>) {
+    match expr {
+        Expr::Postfix { expr, op } => (expr.as_ref(), Some(op)),
+        _ => (expr, None),
+    }
+}
+
 fn substitute_bind_placeholders(source: &str) -> (String, Vec<String>) {
     let mut result = String::new();
     let mut originals = Vec::new();
     let bytes = source.as_bytes();
     let mut index = 0;
     while index < bytes.len() {
-        let bind_macro = if source[index..].starts_with("bind!(") {
-            Some("bind!(")
-        } else if source[index..].starts_with("bind_slice!(") {
+        let bind_macro = if source[index..].starts_with("bind_slice!(") {
             Some("bind_slice!(")
+        } else if source[index..].starts_with("bind!(") {
+            Some("bind!(")
         } else {
             None
         };
@@ -193,13 +241,8 @@ fn substitute_bind_placeholders(source: &str) -> (String, Vec<String>) {
                         }
                     }
                     b'\'' => {
-                        index += 1;
-                        while index < bytes.len() && bytes[index] != b'\'' {
-                            if bytes[index] == b'\\' {
-                                index += 1;
-                            }
-                            index += 1;
-                        }
+                        skip_rust_single_quote_literal(bytes, &mut index);
+                        continue;
                     }
                     _ => {}
                 }
@@ -1157,7 +1200,7 @@ impl<'a> Generator<'a> {
             .collect()
     }
 
-    fn build_variant_construction(rule_name: &str, spec: &RuleOutputSpec) -> String {
+    fn build_variant_construction(rule_name: &str, spec: &RuleOutputSpec, expr: &Expr) -> String {
         let variant = variant_name(rule_name);
         if spec.is_leaf {
             return format!("Parsed::{variant} {{ value }}");
@@ -1165,7 +1208,10 @@ impl<'a> Generator<'a> {
         let fields = spec
             .fields
             .iter()
-            .map(|field| format!("{}: {}", field.name, build_field_init(field, &field.name)))
+            .map(|field| {
+                let bind_var = field_bind_var(field, expr);
+                format!("{}: {}", field.name, build_field_init(field, &bind_var))
+            })
             .collect::<Vec<_>>()
             .join(", ");
         format!("Parsed::{variant} {{ {fields} }}")
@@ -1218,7 +1264,7 @@ impl<'a> Generator<'a> {
         } else {
             format_expr_str(&inner, inner_column)?
         };
-        let construction = Self::build_variant_construction(&sym.rule, &spec);
+        let construction = Self::build_variant_construction(&sym.rule, &spec, &rule.expr);
         let capture = format!(
             "capture!(\n{formatted_grammar} => {construction}\n{close_indent})"
         );
@@ -1273,32 +1319,43 @@ impl<'a> Generator<'a> {
                 }
                 let key = FieldKey::Tag(tag.clone());
                 let sigil = sigil_map.get(&key).copied().unwrap_or(BindSigil::Plain);
-                let bind_name = sanitize_ident(tag);
-                let inner_matcher = self.gen_expr(
-                    expr,
-                    ctx,
-                    recursive_members,
-                    mode,
-                    spec,
-                    sigil_map,
-                    false,
-                    true,
-                );
                 let field_kind = spec
                     .fields
                     .iter()
                     .find(|field| field.key == key)
                     .map(|field| field.kind)
                     .unwrap_or(FieldKind::Slice);
+                let (core_expr, postfix) = peel_single_postfix(expr);
+                let bind_name = tagged_bind_var_name(tag, core_expr);
                 match field_kind {
                     FieldKind::ParsedChild => {
-                        let rule_name = crate::output::unwrap_to_rule_ref(expr).expect(
+                        let rule_name = crate::output::unwrap_to_rule_ref(core_expr).expect(
                             "tagged parsed-child field must refer to a rule",
                         );
                         let rule = &self.graph.rule_map[rule_name];
-                        self.trace_bind(&inner_matcher, sigil.prefix(), &bind_name, rule)
+                        let sym = SymKey {
+                            rule: rule_name.to_string(),
+                            context: callee_context(ctx, rule.modifier.as_ref()),
+                        };
+                        let reference = self.sym_ref(&sym, recursive_members);
+                        let bind =
+                            self.trace_bind(&reference, sigil.prefix(), &bind_name, rule);
+                        match postfix {
+                            None => bind,
+                            Some(op) => self.gen_matcher_postfix(&bind, op, ctx),
+                        }
                     }
                     FieldKind::Slice => {
+                        let inner_matcher = self.gen_expr(
+                            expr,
+                            ctx,
+                            recursive_members,
+                            mode,
+                            spec,
+                            sigil_map,
+                            false,
+                            true,
+                        );
                         self.trace_bind_slice(&inner_matcher, sigil.prefix(), &bind_name)
                     }
                 }
@@ -1445,6 +1502,24 @@ impl<'a> Generator<'a> {
         }
     }
 
+    fn gen_matcher_postfix(&self, inner: &str, op: &PostfixOp, ctx: MatchingContext) -> String {
+        match op {
+            PostfixOp::Optional => format!("optional({inner})"),
+            PostfixOp::Repeat => self.gen_unbounded_repeat(inner, ctx, false),
+            PostfixOp::RepeatOnce => self.gen_unbounded_repeat(inner, ctx, true),
+            PostfixOp::RepeatExact(n) => self.gen_bounded_repeat(inner, ctx, *n, Some(*n)),
+            PostfixOp::RepeatMin(n) if *n == 0 => self.gen_unbounded_repeat(inner, ctx, false),
+            PostfixOp::RepeatMin(n) => self.gen_bounded_repeat(inner, ctx, *n, None),
+            PostfixOp::RepeatMax(n) => self.gen_bounded_repeat(inner, ctx, 0, Some(*n)),
+            PostfixOp::RepeatMinMax(min, max) if *min == 0 => {
+                self.gen_bounded_repeat(inner, ctx, 0, Some(*max))
+            }
+            PostfixOp::RepeatMinMax(min, max) => {
+                self.gen_bounded_repeat(inner, ctx, *min, Some(*max))
+            }
+        }
+    }
+
     fn gen_postfix(
         &self,
         expr: &Expr,
@@ -1466,21 +1541,7 @@ impl<'a> Generator<'a> {
             in_lookahead,
             suppress_bind,
         );
-        match op {
-            PostfixOp::Optional => format!("optional({inner})"),
-            PostfixOp::Repeat => self.gen_unbounded_repeat(&inner, ctx, false),
-            PostfixOp::RepeatOnce => self.gen_unbounded_repeat(&inner, ctx, true),
-            PostfixOp::RepeatExact(n) => self.gen_bounded_repeat(&inner, ctx, *n, Some(*n)),
-            PostfixOp::RepeatMin(n) if *n == 0 => self.gen_unbounded_repeat(&inner, ctx, false),
-            PostfixOp::RepeatMin(n) => self.gen_bounded_repeat(&inner, ctx, *n, None),
-            PostfixOp::RepeatMax(n) => self.gen_bounded_repeat(&inner, ctx, 0, Some(*n)),
-            PostfixOp::RepeatMinMax(min, max) if *min == 0 => {
-                self.gen_bounded_repeat(&inner, ctx, 0, Some(*max))
-            }
-            PostfixOp::RepeatMinMax(min, max) => {
-                self.gen_bounded_repeat(&inner, ctx, *min, Some(*max))
-            }
-        }
+        self.gen_matcher_postfix(&inner, op, ctx)
     }
 
     fn gen_unbounded_repeat(
@@ -2068,6 +2129,30 @@ mod format_tests {
         assert!(substituted.contains("__pest_fmt_bind_0__"));
         assert!(substituted.contains("__pest_fmt_bind_1__"));
         assert!(!substituted.contains("bind!("));
+        assert_eq!(restore_bind_placeholders(&substituted, &originals), source);
+    }
+
+    #[test]
+    fn substitute_bind_placeholders_handles_ci_ch_char_literals() {
+        let source = "bind_slice!((ci_ch('s'), ci_ch('e')), select as &'src str)";
+        let (substituted, originals) = substitute_bind_placeholders(source);
+        assert_eq!(originals.len(), 1);
+        assert_eq!(restore_bind_placeholders(&substituted, &originals), source);
+    }
+
+    #[test]
+    fn format_expr_str_case_insensitive_tagged_literals() {
+        let source = "(start_of_input(), ws.clone(), bind_slice!((ci_ch('s'), ci_ch('e'), ci_ch('l'), ci_ch('e'), ci_ch('c'), ci_ch('t')), select as &'src str), ws.clone(), bind_slice!((ci_ch('f'), ci_ch('r'), ci_ch('o'), ci_ch('m')), from as &'src str), ws.clone(), bind!(ident.clone(), table), ws.clone(), end_of_input())";
+        format_expr_str(source, 8).unwrap();
+    }
+
+    #[test]
+    fn substitute_bind_placeholders_handles_bind_slice_with_lifetime() {
+        let source = "repeat_ws((bind_slice!(one_of(('*', '/')), *op as &'src str), ws.clone()))";
+        let (substituted, originals) = substitute_bind_placeholders(source);
+        assert_eq!(originals.len(), 1);
+        assert!(originals[0].contains("bind_slice!"));
+        assert!(!substituted.contains("bind_slice!("));
         assert_eq!(restore_bind_placeholders(&substituted, &originals), source);
     }
 

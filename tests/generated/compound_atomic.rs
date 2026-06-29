@@ -16,7 +16,7 @@ use marser::parser::{
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
     main {
-        word_val: Box<Parsed<'src>>,
+        word: Box<Parsed<'src>>,
     },
     word {
         letter_val: Vec<Box<Parsed<'src>>>,
@@ -52,9 +52,9 @@ bind_slice!(
         WHITESPACE.clone().ignore_result()
     );
 
-    // main = { SOI ~ word ~ EOI }
+    // main = { SOI ~ #word = word ~ EOI }
     let main = capture!(
-        (start_of_input(), ws.clone(), bind!(word.clone(), word_val), ws.clone(), end_of_input()) => Parsed::main { word_val: Box::new(word_val) }
+        (start_of_input(), ws.clone(), bind!(word.clone(), word_val), ws.clone(), end_of_input()) => Parsed::main { word: Box::new(word_val) }
     );
 
     main.clone()

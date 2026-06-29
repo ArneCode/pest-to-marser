@@ -1,2 +1,2 @@
 WHITESPACE = _{ " " }
-main = { SOI ~ "a"{2,4} ~ EOI }
+main = { SOI ~ #chars = "a"{2,4} ~ EOI }

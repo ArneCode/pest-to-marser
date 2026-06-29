@@ -15,7 +15,9 @@ use marser::parser::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum Parsed<'src> {
     WHITESPACE { value: &'src str },
-    main { value: &'src str },
+    main {
+        chars: Vec<&'src str>,
+    },
 }
 
 pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = Parsed<'src>> + Clone {
@@ -31,18 +33,9 @@ bind_slice!(
         WHITESPACE.clone().ignore_result()
     );
 
-    // main = { SOI ~ "a"{3} ~ EOI }
+    // main = { SOI ~ #chars = "a"{3} ~ EOI }
     let main = capture!(
-bind_slice!(
-            (
-                start_of_input(),
-                ws.clone(),
-                ('a', repeat((ws.clone(), 'a'), 2..=2)),
-                ws.clone(),
-                end_of_input(),
-            ),
-        value as &'src str
-    ) => Parsed::main { value }
+        (start_of_input(), ws.clone(), bind_slice!(('a', repeat((ws.clone(), 'a'), 2..=2)), *chars as &'src str), ws.clone(), end_of_input()) => Parsed::main { chars: chars }
     );
 
     main.clone()

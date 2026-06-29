@@ -1,2 +1,2 @@
 WHITESPACE = _{ " " }
-main = { SOI ~ &"ab" ~ "ab" ~ EOI }
+main = { SOI ~ &"ab" ~ #matched = "ab" ~ EOI }

@@ -20,7 +20,7 @@ pub enum Parsed<'src> {
         hex_color_val: Box<Parsed<'src>>,
     },
     hex_color {
-        hex_digit_val: Vec<Box<Parsed<'src>>>,
+        body: Vec<Box<Parsed<'src>>>,
     },
     hex_digit { value: &'src str },
 }
@@ -46,13 +46,13 @@ bind_slice!(
     ) => Parsed::hex_digit { value }
     );
 
-    // hex_color = { "#" ~ hex_digit{6} }
+    // hex_color = { "#" ~ #body = hex_digit{6} }
     let hex_color = capture!(
         (
             '#',
             ws.clone(),
-            (bind!(hex_digit.clone(), *hex_digit_val), repeat((ws.clone(), bind!(hex_digit.clone(), *hex_digit_val)), 5..=5)),
-        ) => Parsed::hex_color { hex_digit_val: hex_digit_val.into_iter().map(Box::new).collect() }
+            (bind!(hex_digit.clone(), *body), repeat((ws.clone(), bind!(hex_digit.clone(), *body)), 5..=5)),
+        ) => Parsed::hex_color { body: body.into_iter().map(Box::new).collect() }
     );
 
     // main = { SOI ~ hex_color ~ EOI }

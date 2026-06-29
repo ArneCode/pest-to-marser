@@ -68,6 +68,21 @@ fn occurrence_class(wrapping: Option<WrappingPostfix>) -> OccurrenceClass {
     }
 }
 
+fn tagged_inner_wrapping(expr: &Expr) -> Option<WrappingPostfix> {
+    match expr {
+        Expr::Postfix { op, .. } => Some(match op {
+            PostfixOp::Optional => WrappingPostfix::Optional,
+            PostfixOp::Repeat
+            | PostfixOp::RepeatOnce
+            | PostfixOp::RepeatExact(_)
+            | PostfixOp::RepeatMin(_)
+            | PostfixOp::RepeatMax(_)
+            | PostfixOp::RepeatMinMax(_, _) => WrappingPostfix::Repeat,
+        }),
+        _ => None,
+    }
+}
+
 fn dominant_sigil_from_occurrences(classes: &[OccurrenceClass]) -> BindSigil {
     if classes.is_empty() {
         return BindSigil::Plain;
@@ -131,6 +146,41 @@ pub fn unwrap_to_rule_ref(expr: &Expr) -> Option<&str> {
     }
 }
 
+pub fn tagged_rule_ref_for_tag(expr: &Expr, tag: &str) -> Option<String> {
+    match expr {
+        Expr::Tagged { tag: t, expr } if t == tag => {
+            unwrap_to_rule_ref(expr).map(|name| name.to_string())
+        }
+        Expr::Sequence(items) | Expr::Choice(items) => items
+            .iter()
+            .find_map(|item| tagged_rule_ref_for_tag(item, tag)),
+        Expr::Prefix { expr, .. } | Expr::Postfix { expr, .. } => {
+            tagged_rule_ref_for_tag(expr, tag)
+        }
+        _ => None,
+    }
+}
+
+pub fn tagged_bind_var_name(tag: &str, inner_expr: &Expr) -> String {
+    let tag_ident = sanitize_field_name(tag);
+    match unwrap_to_rule_ref(inner_expr) {
+        Some(rule) if rule == tag => format!("{tag_ident}_val"),
+        _ => tag_ident,
+    }
+}
+
+pub fn field_bind_var(field: &FieldSpec, expr: &Expr) -> String {
+    match &field.key {
+        FieldKey::Rule(rule) => format!("{}_val", sanitize_field_name(rule)),
+        FieldKey::Tag(tag) => {
+            tagged_rule_ref_for_tag(expr, tag).map_or_else(
+                || sanitize_field_name(tag),
+                |rule| tagged_bind_var_name(tag, &Expr::RuleRef(rule)),
+            )
+        }
+    }
+}
+
 fn collect_field_occurrences(
     expr: &Expr,
     rules: &HashMap<String, &RuleDef>,
@@ -150,10 +200,11 @@ fn collect_field_occurrences(
             if !out.contains_key(&key) {
                 order.push(key.clone());
             }
+            let field_wrapping = tagged_inner_wrapping(expr).or(wrapping);
             out.entry(key)
                 .or_insert((kind, Vec::new()))
                 .1
-                .push(occurrence_class(wrapping));
+                .push(occurrence_class(field_wrapping));
         }
         Expr::RuleRef(name) => {
             if in_lookahead || !is_defined_rule(name, rules) {
@@ -425,6 +476,36 @@ mod tests {
         assert_eq!(spec.fields.len(), 2);
         assert_eq!(spec.fields[0].name, "lhs");
         assert_eq!(spec.fields[1].name, "rhs");
+    }
+
+    #[test]
+    fn tagged_optional_rule_ref_becomes_optional_field() {
+        let main = mk_rule(
+            "main",
+            Expr::Sequence(vec![
+                Expr::Tagged {
+                    tag: "sign".to_string(),
+                    expr: Box::new(Expr::Postfix {
+                        expr: Box::new(Expr::RuleRef("sign".to_string())),
+                        op: PostfixOp::Optional,
+                    }),
+                },
+                Expr::Tagged {
+                    tag: "digits".to_string(),
+                    expr: Box::new(Expr::RuleRef("digits".to_string())),
+                },
+            ]),
+        );
+        let sign = mk_rule("sign", Expr::Literal("+".to_string()));
+        let digits = mk_rule("digits", Expr::Builtin(Builtin::AsciiDigit));
+        let rules = vec![sign, digits, main];
+        let spec = analyze_rule_output(&rules[2].expr, &rules_map(&rules));
+        assert_eq!(spec.fields.len(), 2);
+        assert_eq!(spec.fields[0].name, "sign");
+        assert_eq!(spec.fields[0].sigil, BindSigil::Optional);
+        assert_eq!(spec.fields[0].kind, FieldKind::ParsedChild);
+        assert_eq!(spec.fields[1].name, "digits");
+        assert_eq!(spec.fields[1].sigil, BindSigil::Plain);
     }
 
     #[test]

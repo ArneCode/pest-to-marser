@@ -30,13 +30,14 @@ where
 pub enum Parsed<'src> {
     expr {
         term_val: Vec<Box<Parsed<'src>>>,
+        op: Vec<&'src str>,
     },
     term {
         factor_val: Vec<Box<Parsed<'src>>>,
+        op: Vec<&'src str>,
     },
     factor {
-        number_val: Option<Box<Parsed<'src>>>,
-        expr_val: Option<Box<Parsed<'src>>>,
+        inner: Vec<Box<Parsed<'src>>>,
     },
     number { value: &'src str },
     WHITESPACE { value: &'src str },
@@ -70,30 +71,30 @@ bind_slice!(
     // by giving the closure a deferred handle to clone inside the body. See:
     // https://docs.rs/marser/latest/marser/parser/deferred/fn.recursive.html
     let expr = recursive(|expr| {
-        // factor = { number | "(" ~ expr ~ ")" }
+        // factor = { #inner = number | "(" ~ #inner = expr ~ ")" }
         let factor = capture!(
             one_of((
-                bind!(number.clone(), ?number_val),
-                ('(', ws.clone(), bind!(expr.clone(), ?expr_val), ws.clone(), ')'),
-            )) => Parsed::factor { number_val: number_val.map(Box::new), expr_val: expr_val.map(Box::new) }
+                bind!(number.clone(), *inner),
+                ('(', ws.clone(), bind!(expr.clone(), *inner), ws.clone(), ')'),
+            )) => Parsed::factor { inner: inner.into_iter().map(Box::new).collect() }
         );
 
-        // term = { factor ~ (("*" | "/") ~ factor)* }
+        // term = { factor ~ ( #op = ("*" | "/") ~ factor )* }
         let term = capture!(
             (
                 bind!(factor.clone(), *factor_val),
                 ws.clone(),
-                repeat_ws((one_of(('*', '/')), ws.clone(), bind!(factor.clone(), *factor_val)), ws.clone()),
-            ) => Parsed::term { factor_val: factor_val.into_iter().map(Box::new).collect() }
+                repeat_ws((bind_slice!(one_of(('*', '/')), *op as &'src str), ws.clone(), bind!(factor.clone(), *factor_val)), ws.clone()),
+            ) => Parsed::term { factor_val: factor_val.into_iter().map(Box::new).collect(), op: op }
         );
 
-        // expr = { term ~ (("+" | "-") ~ term)* }
+        // expr = { term ~ ( #op = ("+" | "-") ~ term )* }
         capture!(
             (
                 bind!(term.clone(), *term_val),
                 ws.clone(),
-                repeat_ws((one_of(('+', '-')), ws.clone(), bind!(term.clone(), *term_val)), ws.clone()),
-            ) => Parsed::expr { term_val: term_val.into_iter().map(Box::new).collect() }
+                repeat_ws((bind_slice!(one_of(('+', '-')), *op as &'src str), ws.clone(), bind!(term.clone(), *term_val)), ws.clone()),
+            ) => Parsed::expr { term_val: term_val.into_iter().map(Box::new).collect(), op: op }
         )
     });
 
