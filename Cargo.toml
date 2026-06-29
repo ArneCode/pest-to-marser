@@ -20,8 +20,8 @@ syn = { version = "2", features = ["full"] }
 toml = "0.8"
 
 [dev-dependencies]
-pest = { path = "../pest/pest" }
-pest_derive = { path = "../pest/derive" }
+pest = "2.8"
+pest_derive = "2.8"
 proptest = "1"
 toml = "0.8"
 

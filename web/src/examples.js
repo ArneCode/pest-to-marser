@@ -15,7 +15,7 @@ newline = _{ "\\n" | "\\r\\n" }
 line_comment = _{ "//" ~ (!newline ~ ANY)* }
 
 main = { SOI ~ item ~ ("," ~ item)* ~ EOI }
-item = { ident ~ "=" ~ number }
+item = { #name = ident ~ "=" ~ #value = number }
 ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 number = @{ ASCII_DIGIT+ }
 `,
@@ -28,9 +28,9 @@ number = @{ ASCII_DIGIT+ }
 // Arithmetic with precedence and recursion.
 // Entry rule: expr
 // Try: 1 + 2 * 3, (1 + 2) * 3
-expr = { term ~ (("+" | "-") ~ term)* }
-term = { factor ~ (("*" | "/") ~ factor)* }
-factor = { number | "(" ~ expr ~ ")" }
+expr = { term ~ ( #op = ("+" | "-") ~ term )* }
+term = { factor ~ ( #op = ("*" | "/") ~ factor )* }
+factor = { #inner = number | "(" ~ #inner = expr ~ ")" }
 number = @{ ASCII_DIGIT+ }
 WHITESPACE = _{ " " | "\\t" }
 `,
@@ -45,7 +45,7 @@ WHITESPACE = _{ " " | "\\t" }
 // Try: #ff00aa, #AABBCC
 WHITESPACE = _{ " " }
 main = { SOI ~ hex_color ~ EOI }
-hex_color = { "#" ~ hex_digit{6} }
+hex_color = { "#" ~ #body = hex_digit{6} }
 hex_digit = _{ '0'..'9' | 'a'..'f' | 'A'..'F' }
 `,
   },
@@ -58,7 +58,7 @@ hex_digit = _{ '0'..'9' | 'a'..'f' | 'A'..'F' }
 // Entry rule: main
 // Try: select from foo, SELECT FROM bar
 WHITESPACE = _{ " " }
-main = { SOI ~ ^"select" ~ ^"from" ~ ident ~ EOI }
+main = { SOI ~ #select = ^"select" ~ #from = ^"from" ~ #table = ident ~ EOI }
 ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 `,
   },
@@ -71,7 +71,7 @@ ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 // Entry rule: main
 // Try: hello world end, foo_bar end
 WHITESPACE = _{ " " }
-main = { SOI ~ ident ~ (!"end" ~ ANY)* ~ "end" ~ EOI }
+main = { SOI ~ #id = ident ~ #prefix = (!"end" ~ ANY)* ~ "end" ~ EOI }
 ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
 `,
   },
