@@ -42,9 +42,15 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = Parsed<'src>> + 
         (
             '#',
             ws.clone(),
-            bind_slice!(
-                (hex_digit.clone(), repeat((ws.clone(), hex_digit.clone()), 5..=5)),
-                *body as &'src str
+            (
+                bind_slice!(hex_digit.clone(), *body as &'src str),
+                repeat(
+                    (
+                        ws.clone(),
+                        bind_slice!(hex_digit.clone(), *body as &'src str),
+                    ),
+                    5..=5,
+                ),
             ),
         ) => Parsed::hex_color { body: body }
     );

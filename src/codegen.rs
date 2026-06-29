@@ -1547,7 +1547,7 @@ impl<'a> Generator<'a> {
                     }
                     FieldKind::Slice => {
                         let inner_matcher = self.gen_expr(
-                            expr,
+                            core_expr,
                             ctx,
                             recursive_members,
                             mode,
@@ -1556,7 +1556,12 @@ impl<'a> Generator<'a> {
                             false,
                             true,
                         );
-                        self.trace_bind_slice(&inner_matcher, sigil.prefix(), &bind_name)
+                        let bind =
+                            self.trace_bind_slice(&inner_matcher, sigil.prefix(), &bind_name);
+                        match postfix {
+                            None => bind,
+                            Some(op) => self.gen_matcher_postfix(&bind, op, ctx),
+                        }
                     }
                 }
             }

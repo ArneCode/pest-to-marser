@@ -70,9 +70,12 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = Parsed<'src>> + 
             ws.clone(),
             bind!(ident.clone(), id),
             ws.clone(),
-            bind_slice!(
-                repeat_ws((negative_lookahead("end"), ws.clone(), AnyToken), ws.clone()),
-                *prefix as &'src str
+            repeat_ws(
+                bind_slice!(
+                    (negative_lookahead("end"), ws.clone(), AnyToken),
+                    *prefix as &'src str
+                ),
+                ws.clone(),
             ),
             ws.clone(),
             "end",

@@ -35,9 +35,12 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = Parsed<'src>> + 
         (
             start_of_input(),
             ws.clone(),
-            bind_slice!(
-                ('a', repeat((ws.clone(), 'a'), 2..=2)),
-                *chars as &'src str
+            (
+                bind_slice!('a', *chars as &'src str),
+                repeat(
+                    (ws.clone(), bind_slice!('a', *chars as &'src str)),
+                    2..=2,
+                ),
             ),
             ws.clone(),
             end_of_input(),
