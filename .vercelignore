@@ -4,3 +4,9 @@ web/target
 web/node_modules
 tests
 src
+web/src
+web/Cargo.toml
+web/Cargo.lock
+web/build.sh
+web/package.json
+web/package-lock.json
