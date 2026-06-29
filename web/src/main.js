@@ -25,6 +25,7 @@ import {
   setPestFilename,
   setStatus,
   setParseDiagnostic,
+  setExampleCaption,
   parseDiagnosticExtensions,
 } from "./ui.js";
 
@@ -245,6 +246,7 @@ examplesSelect?.addEventListener("change", () => {
     save(STORAGE_KEY_ENTRY, ex.entryRule);
   }
   setPestFilename(null);
+  setExampleCaption(ex.description ? `Example: ${ex.label} — ${ex.description}` : null);
   examplesSelect.value = "";
   scheduleConvert();
 });
@@ -293,6 +295,7 @@ initFileImport({
     setEditorContent(pestEditor, text);
     save(STORAGE_KEY_PEST, text);
     setPestFilename(filename);
+    setExampleCaption(null);
     scheduleConvert();
   },
 });

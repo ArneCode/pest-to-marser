@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Convert Pest grammars to Marser Rust parsers in your browser. Live preview, download a Cargo project, or share a link.">
+  <meta property="og:title" content="pest-to-marser — Pest grammar → Marser Rust converter">
+  <meta property="og:description" content="Paste a Pest grammar, get a runnable Marser parser in Rust — no install required.">
   <title>pest-to-marser — Pest grammar → Marser Rust converter</title>
   <style>
     * {
@@ -79,6 +82,15 @@
       display: flex;
       flex-direction: column;
       gap: 0.15rem;
+    }
+
+    .entry-rule-wrap > label {
+      font-size: 0.8125rem;
+      color: #aaa;
+    }
+
+    .entry-rule-wrap code {
+      font-size: 0.65rem;
     }
 
     #entry-rule-hint {
@@ -179,21 +191,214 @@
       white-space: nowrap;
     }
 
-    #onboarding-banner {
-      padding: 0.5rem 1rem;
+    #intro-section {
+      padding: 0.75rem 1rem;
       background: #252526;
       border-bottom: 1px solid #333;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
       font-size: 0.8125rem;
       color: #aaa;
       flex-shrink: 0;
     }
 
-    #onboarding-banner p {
+    #hero {
+      margin-bottom: 0.6rem;
+    }
+
+    #hero p {
+      margin: 0.25rem 0 0;
+      line-height: 1.45;
+      max-width: 72rem;
+    }
+
+    #hero a {
+      color: #6cb6ff;
+      text-decoration: none;
+    }
+
+    #hero a:hover {
+      text-decoration: underline;
+    }
+
+    #hero .tagline {
+      color: #ccc;
+      font-size: 0.875rem;
+    }
+
+    #quick-start {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    #quick-start ol {
+      margin: 0;
+      padding-left: 1.25rem;
+      flex: 1;
+      min-width: 14rem;
+      line-height: 1.5;
+    }
+
+    #quick-start li {
+      margin: 0.15rem 0;
+    }
+
+    #quick-start .tips {
       margin: 0;
       flex: 1;
+      min-width: 14rem;
+      font-size: 0.75rem;
+      color: #888;
+      line-height: 1.45;
+    }
+
+    #intro-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+    }
+
+    #example-caption {
+      padding: 0.35rem 1rem;
+      background: #2a2d2e;
+      border-bottom: 1px solid #333;
+      font-size: 0.75rem;
+      color: #dcdcaa;
+      flex-shrink: 0;
+    }
+
+    #example-caption[hidden] {
+      display: none;
+    }
+
+    .field-hint {
+      font-size: 0.68rem;
+      color: #777;
+      font-weight: 400;
+      line-height: 1.3;
+    }
+
+    .entry-rule-wrap .field-hint {
+      max-width: 12rem;
+    }
+
+    #entry-rule-hint:not([hidden]) + .field-hint,
+    .entry-rule-wrap:has(#entry-rule-hint:not([hidden])) .field-hint {
+      display: none;
+    }
+
+    .output-option-hints {
+      font-size: 0.65rem;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: normal;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    #limitations-panel {
+      border-top: 1px solid #333;
+      background: #1e1e1e;
+      flex-shrink: 0;
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    #limitations-panel summary {
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+      color: #aaa;
+      user-select: none;
+    }
+
+    #limitations-panel summary:hover {
+      color: #ccc;
+    }
+
+    #limitations-panel .limitations-body {
+      padding: 0 1rem 0.6rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 1.5rem;
+      line-height: 1.45;
+    }
+
+    #limitations-panel h3 {
+      margin: 0 0 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #4ec9b0;
+    }
+
+    #limitations-panel h3.limit-not {
+      color: #f48771;
+    }
+
+    #limitations-panel ul {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+
+    #limitations-panel li {
+      margin: 0.1rem 0;
+    }
+
+    #tour-bar {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      background: #2d2d2d;
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 0.6rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.8125rem;
+      color: #ccc;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      max-width: calc(100vw - 2rem);
+    }
+
+    #tour-bar[hidden] {
+      display: none;
+    }
+
+    #tour-bar p {
+      margin: 0;
+    }
+
+    #tour-bar .tour-actions {
+      display: flex;
+      gap: 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .tour-highlight {
+      outline: 2px solid #007acc;
+      outline-offset: 2px;
+      border-radius: 4px;
+      animation: tour-pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes tour-pulse {
+      0%, 100% { outline-color: #007acc; }
+      50% { outline-color: #4ec9b0; }
+    }
+
+    @media (max-width: 768px) {
+      #limitations-panel .limitations-body {
+        grid-template-columns: 1fr;
+      }
+
+      .output-option-hints {
+        display: none;
+      }
     }
 
     .panes {
@@ -267,6 +472,34 @@
       letter-spacing: normal;
       color: #aaa;
       cursor: pointer;
+    }
+
+    .option-with-help {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .option-help {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 0.95rem;
+      height: 0.95rem;
+      border-radius: 50%;
+      border: 1px solid #555;
+      color: #888;
+      font-size: 0.6rem;
+      font-weight: 600;
+      line-height: 1;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .option-help:hover {
+      color: #ccc;
+      border-color: #777;
+      background: #333;
     }
 
     #pest-filename {
@@ -388,27 +621,26 @@
       <label>
         Example
         <select id="examples-select">
-          <option value="">Load…</option>
-          <option value="simple">Simple</option>
-          <option value="calc">Calculator</option>
+          <option value="">Try an example…</option>
+          <option value="simple">Simple — key/value list</option>
+          <option value="calc">Calculator — precedence</option>
+          <option value="optional">Optional — trailing semicolon</option>
         </select>
       </label>
 
       <div class="entry-rule-wrap">
-        <label
-          title="The rule used as the parser entry point (like pest::Parser::parse(Rule::…, input))."
+        <label for="entry-rule">Entry rule</label>
+        <input
+          type="text"
+          id="entry-rule"
+          list="rule-names"
+          value=""
+          placeholder="last rule"
+          spellcheck="false"
+          aria-describedby="entry-rule-help entry-rule-hint"
         >
-          Entry rule
-          <input
-            type="text"
-            id="entry-rule"
-            list="rule-names"
-            value=""
-            placeholder="last rule"
-            spellcheck="false"
-          >
-        </label>
         <span id="entry-rule-hint" hidden></span>
+        <span id="entry-rule-help" class="field-hint">Like <code>Rule::expr</code> in Pest. Empty = last rule.</span>
         <datalist id="rule-names"></datalist>
       </div>
 
@@ -422,17 +654,42 @@
     </div>
 
     <div class="header-links">
-      <a href="https://docs.rs/marser" target="_blank" rel="noopener">marser docs</a>
-      <a href="https://github.com/ArneCode/marser" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://pest.rs/book/" target="_blank" rel="noopener">Pest book</a>
+      <a href="https://docs.rs/marser" target="_blank" rel="noopener">Marser docs</a>
+      <a href="https://github.com/ArneCode/pest-to-marser" target="_blank" rel="noopener">Source</a>
+      <a href="https://github.com/ArneCode/marser" target="_blank" rel="noopener">Marser</a>
     </div>
 
     <span id="status">Loading…</span>
   </header>
 
-  <div id="onboarding-banner">
-    <p>Edit Pest on the left; Rust updates live. Set entry rule, then copy or download.</p>
-    <button type="button" class="btn btn-sm" id="onboarding-dismiss">Dismiss</button>
-  </div>
+  <section id="intro-section">
+    <div id="hero">
+      <p class="tagline">
+        Paste a <a href="https://pest.rs/book/" target="_blank" rel="noopener">Pest</a> grammar, get a runnable
+        <a href="https://docs.rs/marser" target="_blank" rel="noopener">Marser</a> parser in Rust — in your browser, no install.
+      </p>
+      <p>Output is a starter <code>grammar.rs</code> (or a full Cargo project zip) you can extend with real AST types.</p>
+    </div>
+    <div id="quick-start">
+      <ol>
+        <li><strong>Try an example</strong> or open / drag a <code>.pest</code> file onto the left editor</li>
+        <li><strong>Edit the grammar</strong> — Rust on the right updates live</li>
+        <li><strong>Set entry rule</strong>, then copy, download, or <strong>share a link</strong></li>
+      </ol>
+      <p class="tips">
+        Drag-and-drop a <code>.pest</code> file onto the left pane.
+        <strong>Share link</strong> copies a URL with your grammar and entry rule embedded.
+        <strong>Download project</strong> gives a zip with <code>Cargo.toml</code>, <code>main.rs</code>, and README.
+      </p>
+    </div>
+    <div id="intro-actions">
+      <button type="button" class="btn btn-sm" id="intro-dismiss">Got it</button>
+      <button type="button" class="btn btn-sm" id="intro-tour-btn">Show tour</button>
+    </div>
+  </section>
+
+  <div id="example-caption" hidden></div>
 
   <div class="panes" id="panes">
     <div class="pane" id="pest-pane">
@@ -454,14 +711,25 @@
       <div class="pane-header">
         <span>Marser Rust output</span>
         <div class="pane-actions">
-          <label>
+          <label title="Include Pest rule names as comments in the generated Rust">
             <input type="checkbox" id="emit-comments" checked>
             Comments
           </label>
-          <label>
-            <input type="checkbox" id="emit-trace">
-            Trace
-          </label>
+          <span class="option-with-help">
+            <label title="Add .trace() markers for use with marser-trace-viewer">
+              <input type="checkbox" id="emit-trace">
+              Trace
+            </label>
+            <a
+              href="https://docs.rs/marser/latest/marser/guide/tracing_and_debugging/index.html"
+              class="option-help"
+              target="_blank"
+              rel="noopener"
+              title="Tracing and debugging guide"
+              aria-label="Open Marser tracing guide"
+            >?</a>
+          </span>
+          <span class="output-option-hints" id="output-options-hint">Comments: rule names · Trace: <code>.trace()</code> markers</span>
           <span class="pane-sep" aria-hidden="true"></span>
           <button type="button" class="btn btn-sm" id="copy-rust-btn" disabled>Copy</button>
           <button type="button" class="btn btn-sm" id="download-rs-btn" disabled>Download .rs</button>
@@ -478,6 +746,39 @@
       <button type="button" class="btn btn-sm" id="copy-errors-btn" disabled>Copy errors</button>
     </div>
     <ul id="error-list" hidden></ul>
+  </div>
+
+  <details id="limitations-panel">
+    <summary>Supported features &amp; limitations (v1)</summary>
+    <div class="limitations-body">
+      <div>
+        <h3>Supported</h3>
+        <ul>
+          <li>Sequences, choices, repetition (<code>*</code>, <code>+</code>, <code>?</code>, bounds)</li>
+          <li>Modifiers (<code>@</code>, <code>$</code>, <code>!</code>, <code>_</code>)</li>
+          <li><code>WHITESPACE</code> / <code>COMMENT</code> implicit skipping</li>
+          <li>Lookahead (<code>&amp;</code>, <code>!</code>), case-insensitive strings</li>
+          <li>ASCII builtins, right recursion via <code>recursive</code></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="limit-not">Not yet (v1)</h3>
+        <ul>
+          <li>Stack ops (<code>PUSH</code>, <code>POP</code>, <code>PEEK</code>, …)</li>
+          <li>Left recursion</li>
+          <li>Pest <code>Pair</code> trees, spans, or typed AST output</li>
+          <li>Output is <code>()</code> everywhere — extend with Marser <code>capture!</code> / <code>bind!</code></li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <div id="tour-bar" hidden>
+    <p id="tour-text"></p>
+    <div class="tour-actions">
+      <button type="button" class="btn btn-sm" id="tour-skip">Skip</button>
+      <button type="button" class="btn btn-sm" id="tour-next">Next</button>
+    </div>
   </div>
 
   <script type="module" src="./editor.js"></script>

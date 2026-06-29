@@ -1,5 +1,24 @@
-use marser::parser::Parser;
 use pest_to_marser::{ConvertError, ConvertOptions, convert_pest_source, get_pest_grammar};
+use serde::Deserialize;
+
+#[macro_use]
+mod e2e;
+
+#[derive(Deserialize)]
+struct Manifest {
+    fixture: Vec<FixtureEntry>,
+}
+
+#[derive(Deserialize)]
+struct FixtureEntry {
+    pest: String,
+    entry: String,
+    stem: String,
+}
+
+fn fixture_manifest() -> Manifest {
+    toml::from_str(include_str!("fixtures.toml")).expect("parse fixtures.toml")
+}
 
 #[test]
 fn meta_grammar_parses_fully() {
@@ -58,236 +77,277 @@ fn rejects_unsafe_repeat() {
 }
 
 #[test]
-fn simple_grammar_generates_rust() {
-    let src = include_str!("fixtures/simple.pest");
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "main".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("simple grammar should convert");
-    assert!(code.contains("pub fn grammar"));
-    assert!(code.contains("start_of_input()"));
-    assert!(code.contains("end_of_input()"));
-    assert!(!code.contains("positive_lookahead"));
-    assert!(!code.contains("DeferredWeak"));
-    assert!(!code.contains("recursive"));
-}
-
-#[test]
-fn calc_grammar_generates_recursive_block() {
-    let src = include_str!("fixtures/calc.pest");
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "expr".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("calc grammar should convert");
-    assert!(code.contains("recursive("));
-    assert!(!code.contains("recursive2"));
-    assert!(!code.contains("recursive3"));
-    assert!(code.contains("let factor ="));
-    assert!(code.contains("let term ="));
-    assert!(!code.contains("start_of_input"));
-    assert!(!code.contains("negative_lookahead"));
-    assert!(!code.contains("DeferredWeak"));
-}
-
-#[test]
-fn simple_grammar_hoists_builtins() {
-    let src = include_str!("fixtures/simple.pest");
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "main".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("simple grammar should convert");
-    assert!(code.contains("let ASCII_ALPHA ="));
-    assert!(code.contains("let ASCII_ALPHANUMERIC ="));
-    assert!(code.contains("ASCII_ALPHA.clone()"));
-    assert!(code.contains("start_of_input()"));
-    assert!(code.contains("end_of_input()"));
-    assert!(!code.contains("let SOI ="));
-    assert!(!code.contains("let EOI ="));
-    assert!(!code.contains("one_of(('_', one_of(('a'..='z', 'A'..='Z')))"));
-}
-
-#[test]
-fn case_insensitive_literal_uses_ci_ch_helper() {
-    let src = r#"
-main = { SOI ~ ^"select" ~ EOI }
-"#;
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "main".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("case-insensitive grammar should convert");
-    assert!(code.contains("fn ci_ch"));
-    assert!(code.contains("ci_ch('s')"));
-    assert!(!code.contains("one_of(('s', 'S'))"));
-}
-
-#[test]
-fn bounded_repeat_uses_marser_repeat() {
-    let src = r#"
-WHITESPACE = _{ " " }
-main = { SOI ~ "a"{2,4} ~ EOI }
-"#;
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "main".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("bounded-repeat grammar should convert");
-    assert!(code.contains("repeat,"));
-    assert!(code.contains("repeat((ws.clone(), 'a'), 1..=3)"));
-}
-
-#[test]
-fn repeat_once_only_emits_repeat_once_helper() {
-    let src = r#"
-WHITESPACE = _{ " " }
-main = { SOI ~ "a"+ ~ EOI }
-"#;
-    let code = convert_pest_source(
-        src,
-        &ConvertOptions {
-            entry_rule: "main".to_string(),
-            ..Default::default()
-        },
-    )
-    .expect("repeat-once grammar should convert");
-
-    assert!(code.contains("fn repeat_one_or_more_ws"));
-    assert!(!code.contains("fn repeat_ws"));
-}
-
-mod generated_calc {
-    include!("generated/calc.rs");
-}
-
-#[test]
-fn generated_calc_compiles_and_parses() {
-    use generated_calc::grammar;
-
-    assert!(grammar().parse_str("1").is_ok());
-    assert!(grammar().parse_str("1+2").is_ok());
-    assert!(grammar().parse_str("1+2*3").is_ok());
-    assert!(grammar().parse_str("(1+2)*3").is_ok());
-    assert!(grammar().parse_str("1 + 2 * 3").is_ok());
-    assert!(grammar().parse_str("").is_err());
-    assert!(grammar().parse_str("1+").is_err());
+fn committed_generated_snapshots_match_converter() {
+    for fixture in fixture_manifest().fixture {
+        let pest_path = format!("tests/fixtures/{}", fixture.pest);
+        let generated_path = format!("tests/generated/{}.rs", fixture.stem);
+        let src = std::fs::read_to_string(&pest_path)
+            .unwrap_or_else(|e| panic!("read {pest_path}: {e}"));
+        let expected = std::fs::read_to_string(&generated_path)
+            .unwrap_or_else(|e| panic!("read {generated_path}: {e}"));
+        let actual = convert_pest_source(
+            &src,
+            &ConvertOptions {
+                entry_rule: fixture.entry.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("convert {}: {e:?}", fixture.pest));
+        assert_eq!(
+            actual, expected,
+            "stale {generated_path} — run: cargo run --bin update-test-fixtures"
+        );
+    }
 }
 
 mod e2e_calc {
-    use marser::parser::Parser as MarserParser;
-    use pest::Parser;
-    use pest_derive::Parser as PestDerive;
-
-    #[derive(PestDerive)]
-    #[grammar = "tests/fixtures/calc.pest"]
-    struct CalcPest;
-
-    mod generated {
-        include!("generated/calc.rs");
-    }
-
-    fn pest_accepts(input: &str) -> bool {
-        CalcPest::parse(Rule::expr, input).is_ok()
-    }
-
-    fn marser_accepts(input: &str) -> bool {
-        generated::grammar().parse_str(input).is_ok()
-    }
-
-    #[test]
-    fn accept_reject_corpora_match() {
-        let inputs = [
-            "1",
-            "1+2",
-            "1+2*3",
-            "(1+2)*3",
-            "1 + 2 * 3",
-            "10/2-3",
-            "",
-            "((1)",
-        ];
-        for input in inputs {
-            assert_eq!(
-                pest_accepts(input),
-                marser_accepts(input),
-                "mismatch on input: {input:?}"
-            );
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/calc.pest";
+            pest = CalcPest;
+            generated = calc;
+            entry = expr;
+            corpus = [
+                accept!("1"),
+                accept!("1+2"),
+                accept!("1+2*3"),
+                accept!("(1+2)*3"),
+                accept!("1 + 2 * 3"),
+                accept!("10/2-3"),
+                accept!("2*3+4"),
+                accept!("(1)"),
+                accept!("1+2+3"),
+                accept!("1/0"),
+                reject!(""),
+                reject!("1+"),
+                reject!("1++2"),
+                reject!("1 2"),
+                reject!("((1)"),
+            ];
+            fuzz;
         }
     }
 }
 
-mod generated_simple {
-    include!("generated/simple.rs");
-}
-
-#[test]
-fn generated_simple_compiles_and_parses() {
-    use generated_simple::grammar;
-
-    assert!(grammar().parse_str("a=1").is_ok());
-    assert!(grammar().parse_str("a=1,b=2").is_ok());
-    assert!(grammar().parse_str("a=1, b=2").is_ok());
-    assert!(grammar().parse_str("bad").is_err());
+mod e2e_calc_number {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/calc.pest";
+            pest = CalcNumberPest;
+            generated = calc_number;
+            entry = number;
+            corpus = [
+                accept!("0"),
+                accept!("42"),
+                accept!("007"),
+                reject!(""),
+                reject!("1+2"),
+                reject!("12a"),
+            ];
+        }
+    }
 }
 
 mod e2e_simple {
-    use marser::parser::Parser as MarserParser;
-    use pest::Parser;
-    use pest_derive::Parser as PestDerive;
-
-    #[derive(PestDerive)]
-    #[grammar = "tests/fixtures/simple.pest"]
-    struct SimplePest;
-
-    mod generated {
-        include!("generated/simple.rs");
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/simple.pest";
+            pest = SimplePest;
+            generated = simple;
+            entry = main;
+            corpus = [
+                accept!("a=1"),
+                accept!("a=1,b=2"),
+                accept!("a=1, b=2"),
+                accept!("x=9,y=8,z=7"),
+                accept!("_a=0"),
+                accept!("a=1 // comment\n,b=2"),
+                reject!(""),
+                reject!("a="),
+                reject!("1=1"),
+                reject!("a=1,"),
+                reject!("a=1,,b=2"),
+                reject!("a=1 b=2"),
+                reject!("bad"),
+            ];
+            fuzz;
+        }
     }
+}
 
-    fn pest_accepts(input: &str) -> bool {
-        SimplePest::parse(Rule::main, input).is_ok()
+mod e2e_case_insensitive {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/case_insensitive.pest";
+            pest = CaseInsensitivePest;
+            generated = case_insensitive;
+            entry = main;
+            corpus = [
+                accept!("select from foo"),
+                accept!("SELECT FROM foo"),
+                accept!("SeLeCt FrOm foo"),
+                accept!("select  from  bar"),
+                accept!("selectfrom foo"),
+                reject!("select frm foo"),
+                reject!("select from"),
+                reject!(""),
+            ];
+        }
     }
+}
 
-    fn marser_accepts(input: &str) -> bool {
-        generated::grammar().parse_str(input).is_ok()
+mod e2e_bounded_repeat {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/bounded_repeat.pest";
+            pest = BoundedRepeatPest;
+            generated = bounded_repeat;
+            entry = main;
+            corpus = [
+                accept!("aa"),
+                accept!("aaa"),
+                accept!("aaaa"),
+                reject!("a"),
+                reject!("aaaaa"),
+                reject!(""),
+                reject!("b"),
+            ];
+        }
     }
+}
 
-    #[test]
-    fn accept_reject_corpora_match() {
-        let inputs = [
-            "a=1",
-            "a=1,b=2",
-            "a=1, b=2",
-            "x=9,y=8,z=7",
-            "",
-            "a=",
-            "1=1",
-            "a=1,",
-            "a=1,,b=2",
-            "a=1 b=2",
-        ];
-        for input in inputs {
-            assert_eq!(
-                pest_accepts(input),
-                marser_accepts(input),
-                "mismatch on input: {input:?}"
-            );
+mod e2e_lookahead {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/lookahead.pest";
+            pest = LookaheadPest;
+            generated = lookahead;
+            entry = main;
+            corpus = [
+                reject!("aend"),
+                accept!("hello end"),
+                accept!("hello world end"),
+                accept!("foo_bar end"),
+                reject!("hello"),
+                reject!("end"),
+                reject!(""),
+                accept!("helloend end"),
+            ];
+        }
+    }
+}
+
+mod e2e_optional {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/optional.pest";
+            pest = OptionalPest;
+            generated = optional;
+            entry = main;
+            corpus = [
+                accept!("42"),
+                accept!("+42"),
+                accept!("-7"),
+                accept!("0"),
+                reject!(""),
+                reject!("++1"),
+                reject!("+"),
+                reject!("4.2"),
+            ];
+        }
+    }
+}
+
+mod e2e_ranges {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/ranges.pest";
+            pest = RangesPest;
+            generated = ranges;
+            entry = main;
+            corpus = [
+                accept!("#ff00aa"),
+                accept!("#FF00AA"),
+                accept!("#012345"),
+                reject!("#gg0000"),
+                reject!("#fff"),
+                reject!("#1234567"),
+                reject!(""),
+                reject!("ff00aa"),
+            ];
+        }
+    }
+}
+
+mod e2e_positive_lookahead {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/positive_lookahead.pest";
+            pest = PositiveLookaheadPest;
+            generated = positive_lookahead;
+            entry = main;
+            corpus = [
+                accept!("ab"),
+                accept!("ab "),
+                reject!("a"),
+                reject!("abc"),
+                reject!(""),
+                reject!("xab"),
+            ];
+        }
+    }
+}
+
+mod e2e_compound_atomic {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/compound_atomic.pest";
+            pest = CompoundAtomicPest;
+            generated = compound_atomic;
+            entry = main;
+            corpus = [
+                accept!("hello"),
+                accept!("world"),
+                reject!("hel lo"),
+                reject!(""),
+                reject!("123"),
+            ];
+        }
+    }
+}
+
+mod e2e_non_atomic {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/non_atomic.pest";
+            pest = NonAtomicPest;
+            generated = non_atomic;
+            entry = main;
+            corpus = [
+                reject!("a b"),
+                reject!("a  b c"),
+                reject!("ab"),
+                reject!("a"),
+                reject!(""),
+            ];
+        }
+    }
+}
+
+mod e2e_exact_repeat {
+    pest_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/exact_repeat.pest";
+            pest = ExactRepeatPest;
+            generated = exact_repeat;
+            entry = main;
+            corpus = [
+                accept!("aaa"),
+                reject!("aa"),
+                reject!("aaaa"),
+                reject!(""),
+                reject!("b"),
+            ];
         }
     }
 }

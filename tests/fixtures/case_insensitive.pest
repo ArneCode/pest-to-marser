@@ -1,0 +1,3 @@
+WHITESPACE = _{ " " }
+main = { SOI ~ ^"select" ~ ^"from" ~ ident ~ EOI }
+ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }

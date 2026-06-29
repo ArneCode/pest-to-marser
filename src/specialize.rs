@@ -18,8 +18,8 @@ pub struct SpecializationGraph {
 pub fn build_specialization_graph(
     rules: &[RuleDef],
     entry_rule: &str,
-    has_whitespace: bool,
-    has_comment: bool,
+    _has_whitespace: bool,
+    _has_comment: bool,
 ) -> ConvertResult<SpecializationGraph> {
     let rule_map: HashMap<_, _> = rules.iter().map(|r| (r.name.clone(), r.clone())).collect();
     let entry_rule_def = rule_map.get(entry_rule).ok_or_else(|| {
@@ -39,19 +39,6 @@ pub fn build_specialization_graph(
     let mut edges: HashMap<SymKey, HashSet<SymKey>> = HashMap::new();
     let mut warnings = Vec::new();
     let mut queue = VecDeque::from([entry.clone()]);
-
-    if has_whitespace {
-        queue.push_back(SymKey {
-            rule: "WHITESPACE".to_string(),
-            context: MatchingContext::AtomicNoWs,
-        });
-    }
-    if has_comment {
-        queue.push_back(SymKey {
-            rule: "COMMENT".to_string(),
-            context: MatchingContext::AtomicNoWs,
-        });
-    }
 
     while let Some(sym) = queue.pop_front() {
         if !nodes.insert(sym.clone()) {
@@ -85,6 +72,16 @@ pub fn build_specialization_graph(
         rule_map,
         warnings,
     })
+}
+
+pub(crate) fn collect_rule_deps(
+    expr: &Expr,
+    caller_context: MatchingContext,
+    rules: &HashMap<String, RuleDef>,
+    deps: &mut HashSet<SymKey>,
+) {
+    let mut warnings = Vec::new();
+    collect_deps(expr, caller_context, rules, deps, &mut warnings);
 }
 
 fn collect_deps(

@@ -1,0 +1,2 @@
+WHITESPACE = _{ " " }
+main = { SOI ~ "a"{3} ~ EOI }

@@ -1,0 +1,4 @@
+WHITESPACE = _{ " " }
+main = { SOI ~ sign? ~ digits ~ EOI }
+sign = { "+" | "-" }
+digits = @{ ASCII_DIGIT+ }

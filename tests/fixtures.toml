@@ -1,0 +1,62 @@
+# E2E fixture manifest: pest file, entry rule, and generated snapshot stem.
+# Used by build.rs, drift tests, and update-test-fixtures.
+
+[[fixture]]
+pest = "calc.pest"
+entry = "expr"
+stem = "calc"
+
+[[fixture]]
+pest = "calc.pest"
+entry = "number"
+stem = "calc_number"
+
+[[fixture]]
+pest = "simple.pest"
+entry = "main"
+stem = "simple"
+
+[[fixture]]
+pest = "case_insensitive.pest"
+entry = "main"
+stem = "case_insensitive"
+
+[[fixture]]
+pest = "bounded_repeat.pest"
+entry = "main"
+stem = "bounded_repeat"
+
+[[fixture]]
+pest = "lookahead.pest"
+entry = "main"
+stem = "lookahead"
+
+[[fixture]]
+pest = "optional.pest"
+entry = "main"
+stem = "optional"
+
+[[fixture]]
+pest = "ranges.pest"
+entry = "main"
+stem = "ranges"
+
+[[fixture]]
+pest = "positive_lookahead.pest"
+entry = "main"
+stem = "positive_lookahead"
+
+[[fixture]]
+pest = "compound_atomic.pest"
+entry = "main"
+stem = "compound_atomic"
+
+[[fixture]]
+pest = "non_atomic.pest"
+entry = "main"
+stem = "non_atomic"
+
+[[fixture]]
+pest = "exact_repeat.pest"
+entry = "main"
+stem = "exact_repeat"

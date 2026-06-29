@@ -14,8 +14,16 @@ path = "src/main.rs"
 marser = "0.2.2"
 prettyplease = "0.2"
 quote = "1"
+serde = { version = "1", features = ["derive"] }
 syn = { version = "2", features = ["full"] }
+toml = "0.8"
 
 [dev-dependencies]
 pest = { path = "../pest/pest" }
 pest_derive = { path = "../pest/derive" }
+proptest = "1"
+toml = "0.8"
+
+[[bin]]
+name = "update-test-fixtures"
+path = "src/bin/update_test_fixtures.rs"

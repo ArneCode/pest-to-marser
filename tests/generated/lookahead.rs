@@ -4,7 +4,6 @@ use marser::matcher::{
     Matcher,
     many,
     negative_lookahead,
-    one_or_more,
     optional,
     start_of_input,
     end_of_input,
@@ -34,8 +33,6 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
 
     let ASCII_ALPHANUMERIC = one_of(('a'..='z', 'A'..='Z', '0'..='9'));
 
-    let ASCII_DIGIT = '0'..='9';
-
     // ident = @{ ("_" | ASCII_ALPHA) ~ ("_" | ASCII_ALPHANUMERIC)* }
     let ident = capture!(
         (
@@ -44,48 +41,25 @@ pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
         ) => ()
     ).erase_types();
 
-    // number = @{ ASCII_DIGIT+ }
-    let number = capture!(
-        one_or_more(ASCII_DIGIT.clone()) => ()
-    ).erase_types();
-
-    // newline = _{ "\n" | "\r\n" }
-    let newline = capture!(
-        one_of(('\n', "\r\n")) => ()
-    ).erase_types();
-
-    // WHITESPACE = _{ " " | "\t" | newline }
+    // WHITESPACE = _{ " " }
     let WHITESPACE = capture!(
-        one_of((' ', '\t', bind!(newline.clone(), ?newline_val))) => ()
-    ).erase_types();
-
-    // line_comment = _{ "//" ~ (!newline ~ ANY)* }
-    let line_comment = capture!(
-        ("//", many((negative_lookahead(newline.clone().ignore_result()), AnyToken))) => ()
-    ).erase_types();
-
-    // COMMENT = _{ line_comment }
-    let COMMENT = capture!(
-        bind!(line_comment.clone(), line_comment_val) => ()
+        ' ' => ()
     ).erase_types();
 
     let ws = many(
-        one_of((WHITESPACE.clone().ignore_result(), COMMENT.clone().ignore_result()))
+        WHITESPACE.clone().ignore_result()
     );
 
-    // item = { ident ~ "=" ~ number }
-    let item = capture!(
-        (bind!(ident.clone(), ident_val), ws.clone(), '=', ws.clone(), bind!(number.clone(), number_val)) => ()
-    ).erase_types();
-
-    // main = { SOI ~ item ~ ("," ~ item)* ~ EOI }
+    // main = { SOI ~ ident ~ (!"end" ~ ANY)* ~ "end" ~ EOI }
     let main = capture!(
         (
             start_of_input(),
             ws.clone(),
-            bind!(item.clone(), *item_val),
+            bind!(ident.clone(), ident_val),
             ws.clone(),
-            repeat_ws((',', ws.clone(), bind!(item.clone(), *item_val)), ws.clone()),
+            repeat_ws((negative_lookahead("end"), ws.clone(), AnyToken), ws.clone()),
+            ws.clone(),
+            "end",
             ws.clone(),
             end_of_input(),
         ) => ()

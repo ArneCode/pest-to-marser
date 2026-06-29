@@ -75,24 +75,173 @@ export function setParseDiagnostic(view, diagnostic) {
 }
 
 export function initOnboarding() {
-  const banner = document.getElementById("onboarding-banner");
-  const dismiss = document.getElementById("onboarding-dismiss");
-  if (!banner || !dismiss) return;
+  initIntro();
+  initTour();
+}
 
-  const key = "pest-to-marser.onboarding-dismissed";
+function initIntro() {
+  const section = document.getElementById("intro-section");
+  const dismiss = document.getElementById("intro-dismiss");
+  const tourBtn = document.getElementById("intro-tour-btn");
+  if (!section || !dismiss) return;
+
+  const key = "pest-to-marser.intro-dismissed";
+  try {
+    if (localStorage.getItem("pest-to-marser.onboarding-dismissed") === "1") {
+      localStorage.setItem(key, "1");
+      localStorage.removeItem("pest-to-marser.onboarding-dismissed");
+    }
+  } catch {
+    // ignore
+  }
   if (localStorage.getItem(key) === "1") {
-    banner.hidden = true;
-    return;
+    section.hidden = true;
   }
 
   dismiss.addEventListener("click", () => {
-    banner.hidden = true;
+    section.hidden = true;
     try {
       localStorage.setItem(key, "1");
     } catch {
       // ignore
     }
+    maybeStartTour();
   });
+
+  tourBtn?.addEventListener("click", () => {
+    startTour({ force: true });
+  });
+}
+
+const TOUR_STEPS = [
+  {
+    targetId: "examples-select",
+    text: "Start here — load a sample grammar to see live conversion.",
+  },
+  {
+    targetId: "entry-rule",
+    text: "Set the entry rule — the top-level rule Pest would parse (e.g. expr).",
+  },
+  {
+    targetId: "pest-editor",
+    text: "Edit your grammar here, or drag a .pest file onto this pane.",
+  },
+  {
+    targetId: "share-link-btn",
+    text: "Share link copies a URL with your grammar embedded.",
+  },
+  {
+    targetId: "download-project-btn",
+    text: "Download project — get a ready-to-run Cargo zip with README.",
+  },
+];
+
+let tourStepIndex = 0;
+let tourHighlightEl = null;
+
+function clearTourHighlight() {
+  if (tourHighlightEl) {
+    tourHighlightEl.classList.remove("tour-highlight");
+    tourHighlightEl = null;
+  }
+}
+
+function showTourStep(index) {
+  const bar = document.getElementById("tour-bar");
+  const text = document.getElementById("tour-text");
+  const nextBtn = document.getElementById("tour-next");
+  if (!bar || !text) return;
+
+  clearTourHighlight();
+  const step = TOUR_STEPS[index];
+  if (!step) {
+    finishTour();
+    return;
+  }
+
+  const target = document.getElementById(step.targetId);
+  if (target) {
+    target.classList.add("tour-highlight");
+    tourHighlightEl = target;
+    target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  text.textContent = `Step ${index + 1} of ${TOUR_STEPS.length}: ${step.text}`;
+  if (nextBtn) {
+    nextBtn.textContent = index === TOUR_STEPS.length - 1 ? "Done" : "Next";
+  }
+  bar.hidden = false;
+}
+
+function finishTour() {
+  clearTourHighlight();
+  const bar = document.getElementById("tour-bar");
+  if (bar) bar.hidden = true;
+  try {
+    localStorage.setItem("pest-to-marser.tour-done", "1");
+  } catch {
+    // ignore
+  }
+}
+
+function maybeStartTour() {
+  try {
+    if (localStorage.getItem("pest-to-marser.tour-done") === "1") return;
+  } catch {
+    // ignore
+  }
+  startTour();
+}
+
+function startTour({ force = false } = {}) {
+  if (!force) {
+    try {
+      if (localStorage.getItem("pest-to-marser.tour-done") === "1") return;
+    } catch {
+      // ignore
+    }
+  }
+  tourStepIndex = 0;
+  showTourStep(tourStepIndex);
+}
+
+function initTour() {
+  const bar = document.getElementById("tour-bar");
+  const skip = document.getElementById("tour-skip");
+  const next = document.getElementById("tour-next");
+  if (!bar) return;
+
+  skip?.addEventListener("click", finishTour);
+  next?.addEventListener("click", () => {
+    tourStepIndex += 1;
+    if (tourStepIndex >= TOUR_STEPS.length) {
+      finishTour();
+    } else {
+      showTourStep(tourStepIndex);
+    }
+  });
+
+  try {
+    const introDismissed = localStorage.getItem("pest-to-marser.intro-dismissed") === "1";
+    const tourDone = localStorage.getItem("pest-to-marser.tour-done") === "1";
+    if (introDismissed && !tourDone) {
+      setTimeout(() => startTour(), 400);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function setExampleCaption(text) {
+  const el = document.getElementById("example-caption");
+  if (!el) return;
+  if (text) {
+    el.textContent = text;
+    el.hidden = false;
+  } else {
+    el.textContent = "";
+    el.hidden = true;
+  }
 }
 
 export function initPaneResizer(onResize) {

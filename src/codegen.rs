@@ -13,7 +13,7 @@ use crate::normalize::{RuleDef, RuleTable};
 use crate::scc::{
     Scc, condensation_topo, is_cyclic, partition_scc_for_recursion, recursive_arity, tarjan_scc,
 };
-use crate::specialize::{SpecializationGraph, build_specialization_graph, callee_context};
+use crate::specialize::{SpecializationGraph, build_specialization_graph, callee_context, collect_rule_deps};
 
 const RUST_KEYWORDS: &[&str] = &[
     "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
@@ -607,6 +607,58 @@ fn collect_import_needs_expr(
     }
 }
 
+fn collect_ws_rule_import_needs(
+    table: &RuleTable,
+    graph: &SpecializationGraph,
+    needs: &mut ImportNeeds,
+) {
+    let needs_implicit_ws = graph
+        .nodes
+        .iter()
+        .any(|sym| sym.context == MatchingContext::NormalWs);
+    if !needs_implicit_ws {
+        return;
+    }
+
+    let mut stack = Vec::new();
+    if table.has_whitespace {
+        stack.push(SymKey {
+            rule: "WHITESPACE".to_string(),
+            context: MatchingContext::AtomicNoWs,
+        });
+    }
+    if table.has_comment {
+        stack.push(SymKey {
+            rule: "COMMENT".to_string(),
+            context: MatchingContext::AtomicNoWs,
+        });
+    }
+
+    let mut visited = HashSet::new();
+    while let Some(sym) = stack.pop() {
+        if !visited.insert(sym.clone()) {
+            continue;
+        }
+        let Some(rule) = graph.rule_map.get(&sym.rule) else {
+            continue;
+        };
+        collect_import_needs_expr(&rule.expr, sym.context, table, needs, false);
+        let mut deps = HashSet::new();
+        collect_rule_deps(&rule.expr, sym.context, &graph.rule_map, &mut deps);
+        for dep in deps {
+            stack.push(dep);
+        }
+    }
+
+    if table.has_whitespace || table.has_comment {
+        needs.matcher = true;
+        needs.many = true;
+        if table.has_whitespace && table.has_comment {
+            needs.one_of = true;
+        }
+    }
+}
+
 fn compute_import_needs(
     table: &RuleTable,
     graph: &SpecializationGraph,
@@ -623,12 +675,7 @@ fn compute_import_needs(
             collect_import_needs_expr(&rule.expr, sym.context, table, &mut needs, false);
         }
     }
-    if table.has_whitespace || table.has_comment {
-        needs.many = true;
-        if table.has_whitespace && table.has_comment {
-            needs.one_of = true;
-        }
-    }
+    collect_ws_rule_import_needs(table, graph, &mut needs);
     if needs_ws_repeat_helper {
         needs.matcher = true;
         needs.optional = true;
@@ -697,6 +744,31 @@ impl<'a> Generator<'a> {
         let mut sym_names = HashMap::new();
         for sym in &graph.nodes {
             sym_names.insert(sym.clone(), binding_name_for_graph(sym, &contexts_by_rule));
+        }
+
+        let needs_implicit_ws = graph
+            .nodes
+            .iter()
+            .any(|sym| sym.context == MatchingContext::NormalWs);
+        if needs_implicit_ws {
+            if table.has_whitespace {
+                let sym = SymKey {
+                    rule: "WHITESPACE".to_string(),
+                    context: MatchingContext::AtomicNoWs,
+                };
+                sym_names
+                    .entry(sym)
+                    .or_insert_with(|| "WHITESPACE".to_string());
+            }
+            if table.has_comment {
+                let sym = SymKey {
+                    rule: "COMMENT".to_string(),
+                    context: MatchingContext::AtomicNoWs,
+                };
+                sym_names
+                    .entry(sym)
+                    .or_insert_with(|| "COMMENT".to_string());
+            }
         }
 
         let mut cyclic_syms = HashSet::new();
@@ -982,7 +1054,7 @@ impl<'a> Generator<'a> {
             }
         }
 
-        if !ws_emitted {
+        if !ws_emitted && self.graph.nodes.iter().any(|sym| sym.context == MatchingContext::NormalWs) {
             self.emit_ws_matcher(&mut out)?;
         }
 
@@ -1008,35 +1080,40 @@ impl<'a> Generator<'a> {
             });
         }
 
-        let mut required = HashSet::new();
-        let mut stack = roots;
-        while let Some(sym) = stack.pop() {
-            if !required.insert(sym.clone()) {
-                continue;
+        let mut visiting = HashSet::new();
+        for root in roots {
+            self.emit_ws_sym(out, &root, &mut visiting)?;
+        }
+        Ok(())
+    }
+
+    fn emit_ws_sym(
+        &mut self,
+        out: &mut String,
+        sym: &SymKey,
+        visiting: &mut HashSet<SymKey>,
+    ) -> Result<(), ConvertError> {
+        if self.emitted.contains(sym) {
+            return Ok(());
+        }
+        if !visiting.insert(sym.clone()) {
+            return Ok(());
+        }
+
+        if let Some(deps) = self.graph.edges.get(sym) {
+            for dep in deps {
+                self.emit_ws_sym(out, dep, visiting)?;
             }
-            if let Some(deps) = self.graph.edges.get(&sym) {
-                for dep in deps {
-                    stack.push(dep.clone());
-                }
+        } else if let Some(rule) = self.graph.rule_map.get(&sym.rule) {
+            let mut deps = HashSet::new();
+            collect_rule_deps(&rule.expr, sym.context, &self.graph.rule_map, &mut deps);
+            for dep in deps {
+                self.emit_ws_sym(out, &dep, visiting)?;
             }
         }
 
-        let order = condensation_topo(self.sccs, self.graph);
-        for scc_idx in &order {
-            let scc = &self.sccs[*scc_idx];
-            if !scc.members.iter().any(|member| required.contains(member)) {
-                continue;
-            }
-            if is_cyclic(scc) {
-                self.emit_recursive_scc(out, scc)?;
-            } else {
-                for member in &scc.members {
-                    if required.contains(member) {
-                        self.emit_acyclic_sym(out, member)?;
-                    }
-                }
-            }
-        }
+        self.emit_acyclic_sym(out, sym)?;
+        visiting.remove(sym);
         Ok(())
     }
 
@@ -1109,6 +1186,13 @@ impl<'a> Generator<'a> {
     fn emit_acyclic_sym(&mut self, out: &mut String, sym: &SymKey) -> Result<(), ConvertError> {
         if self.emitted.contains(sym) || self.cyclic_syms.contains(sym) {
             return Ok(());
+        }
+        if !self.sym_names.contains_key(sym) {
+            let contexts_by_rule = contexts_by_rule(&self.graph.nodes);
+            self.sym_names.insert(
+                sym.clone(),
+                binding_name_for_graph(sym, &contexts_by_rule),
+            );
         }
         let name = self.sym_names[sym].clone();
         self.emit_rule_comment(out, &sym.rule, "    ");

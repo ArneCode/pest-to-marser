@@ -29,14 +29,14 @@ where
 pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = ()> + Clone {
     let ASCII_DIGIT = '0'..='9';
 
-    // WHITESPACE = _{ " " | "\t" }
-    let WHITESPACE = capture!(
-        one_of((' ', '\t')) => ()
-    ).erase_types();
-
     // number = @{ ASCII_DIGIT+ }
     let number = capture!(
         one_or_more(ASCII_DIGIT.clone()) => ()
+    ).erase_types();
+
+    // WHITESPACE = _{ " " | "\t" }
+    let WHITESPACE = capture!(
+        one_of((' ', '\t')) => ()
     ).erase_types();
 
     let ws = many(
