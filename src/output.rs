@@ -83,6 +83,26 @@ fn tagged_inner_wrapping(expr: &Expr) -> Option<WrappingPostfix> {
     }
 }
 
+fn merge_choice_occurrence_classes(per_alt: &[Vec<OccurrenceClass>]) -> OccurrenceClass {
+    let sigils: Vec<BindSigil> = per_alt
+        .iter()
+        .map(|classes| dominant_sigil_from_occurrences(classes))
+        .collect();
+    if sigils
+        .iter()
+        .any(|sigil| matches!(sigil, BindSigil::Multiple))
+    {
+        OccurrenceClass::Multiple
+    } else if sigils
+        .iter()
+        .any(|sigil| matches!(sigil, BindSigil::Optional))
+    {
+        OccurrenceClass::Optional
+    } else {
+        OccurrenceClass::Plain
+    }
+}
+
 fn dominant_sigil_from_occurrences(classes: &[OccurrenceClass]) -> BindSigil {
     if classes.is_empty() {
         return BindSigil::Plain;
@@ -289,14 +309,16 @@ fn collect_field_occurrences(
                     if !out.contains_key(&key) {
                         order.push(key.clone());
                     }
-                    for (_, alt_map) in &per_alt {
-                        if let Some((_, classes)) = alt_map.get(&key) {
-                            out.entry(key.clone())
-                                .or_insert((kind, Vec::new()))
-                                .1
-                                .extend(classes.iter().copied());
-                        }
-                    }
+                    let alt_class_lists: Vec<Vec<OccurrenceClass>> = per_alt
+                        .iter()
+                        .filter_map(|(_, alt_map)| {
+                            alt_map.get(&key).map(|(_, classes)| classes.clone())
+                        })
+                        .collect();
+                    out.entry(key.clone())
+                        .or_insert((kind, Vec::new()))
+                        .1
+                        .push(merge_choice_occurrence_classes(&alt_class_lists));
                 }
             }
         }
@@ -476,6 +498,35 @@ mod tests {
         assert_eq!(spec.fields.len(), 2);
         assert_eq!(spec.fields[0].name, "lhs");
         assert_eq!(spec.fields[1].name, "rhs");
+    }
+
+    #[test]
+    fn tagged_same_tag_in_choice_alts_is_single_field() {
+        let factor = mk_rule(
+            "factor",
+            Expr::Choice(vec![
+                Expr::Tagged {
+                    tag: "inner".to_string(),
+                    expr: Box::new(Expr::RuleRef("number".to_string())),
+                },
+                Expr::Sequence(vec![
+                    Expr::Literal("(".to_string()),
+                    Expr::Tagged {
+                        tag: "inner".to_string(),
+                        expr: Box::new(Expr::RuleRef("expr".to_string())),
+                    },
+                    Expr::Literal(")".to_string()),
+                ]),
+            ]),
+        );
+        let number = mk_rule("number", Expr::Builtin(Builtin::AsciiDigit));
+        let expr = mk_rule("expr", Expr::RuleRef("factor".to_string()));
+        let rules = vec![number, expr, factor.clone()];
+        let spec = analyze_rule_output(&factor.expr, &rules_map(&rules));
+        assert_eq!(spec.fields.len(), 1);
+        assert_eq!(spec.fields[0].name, "inner");
+        assert_eq!(spec.fields[0].sigil, BindSigil::Plain);
+        assert_eq!(spec.fields[0].kind, FieldKind::ParsedChild);
     }
 
     #[test]

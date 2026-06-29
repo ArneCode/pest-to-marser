@@ -18,7 +18,7 @@ pub enum Parsed<'src> {
         op: Vec<&'src str>,
     },
     factor {
-        inner: Vec<Box<Parsed<'src>>>,
+        inner: Box<Parsed<'src>>,
     },
     number { value: &'src str },
     WHITESPACE { value: &'src str },

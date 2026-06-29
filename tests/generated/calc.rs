@@ -37,7 +37,7 @@ pub enum Parsed<'src> {
         op: Vec<&'src str>,
     },
     factor {
-        inner: Vec<Box<Parsed<'src>>>,
+        inner: Box<Parsed<'src>>,
     },
     number { value: &'src str },
     WHITESPACE { value: &'src str },
@@ -74,9 +74,9 @@ bind_slice!(
         // factor = { #inner = number | "(" ~ #inner = expr ~ ")" }
         let factor = capture!(
             one_of((
-                bind!(number.clone(), *inner),
-                ('(', ws.clone(), bind!(expr.clone(), *inner), ws.clone(), ')'),
-            )) => Parsed::factor { inner: inner.into_iter().map(Box::new).collect() }
+                bind!(number.clone(), inner),
+                ('(', ws.clone(), bind!(expr.clone(), inner), ws.clone(), ')'),
+            )) => Parsed::factor { inner: Box::new(inner) }
         );
 
         // term = { factor ~ ( #op = ("*" | "/") ~ factor )* }
