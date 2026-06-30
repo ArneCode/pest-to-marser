@@ -107,3 +107,11 @@ cd web
 Or open each worktree’s `web/` in a browser on different ports.
 
 Pick a winner, then merge that branch to `main` in a follow-up Agent session.
+
+## Sync worktrees after baseline changes
+
+```bash
+for wt in ../pest-to-marser-design-welcome ../pest-to-marser-design-playground ../pest-to-marser-design-clarity; do
+  git -C "$wt" merge main -m "sync: merge baseline from main"
+done
+```
