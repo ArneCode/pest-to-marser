@@ -133,3 +133,45 @@ macro_rules! pest_marser_e2e {
         }
     };
 }
+
+/// Corpus-driven accept/reject tests for PEG-generated parsers (no Pest oracle).
+#[macro_export]
+macro_rules! peg_marser_e2e {
+    (
+        mod $mod_name:ident {
+            grammar = $grammar_path:literal;
+            generated = $generated_stem:ident;
+            entry = $entry_rule:ident;
+            corpus = [$($case:expr),+ $(,)?];
+        }
+    ) => {
+        $crate::peg_marser_e2e! {
+            @body $mod_name, $grammar_path, $generated_stem, $entry_rule, [$($case),+]
+        }
+    };
+    (
+        @body $mod_name:ident, $grammar_path:literal, $generated_stem:ident,
+        $entry_rule:ident, [$($case:expr),+]
+    ) => {
+        mod $mod_name {
+            use marser::parser::Parser as MarserParser;
+
+            pub(super) mod generated {
+                include!(concat!("generated/", stringify!($generated_stem), ".rs"));
+            }
+
+            #[test]
+            fn accept_reject_corpora_match() {
+                let cases: &[(&str, bool)] = &[$($case),+];
+                for &(input, expected) in cases {
+                    let marser_ok = generated::grammar().parse_str(input).is_ok();
+                    assert_eq!(
+                        marser_ok, expected,
+                        "marser parser disagrees with corpus label on input {input:?}: \
+                         marser accepts = {marser_ok}, expected = {expected}"
+                    );
+                }
+            }
+        }
+    };
+}

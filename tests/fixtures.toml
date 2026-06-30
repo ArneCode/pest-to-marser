@@ -1,5 +1,5 @@
 # E2E fixture manifest: pest file, entry rule, and generated snapshot stem.
-# Used by build.rs, drift tests, and update-test-fixtures.
+# Used by drift tests and update-test-fixtures.
 
 [[fixture]]
 pest = "calc.pest"
@@ -65,6 +65,36 @@ stem = "exact_repeat"
 pest = "dual_trivia.pest"
 entry = "main"
 stem = "dual_trivia"
+
+[[peg_fixture]]
+peg = "peg_simple.peg"
+entry = "main"
+stem = "peg_simple"
+
+[[peg_fixture]]
+peg = "peg_calc.peg"
+entry = "expr"
+stem = "peg_calc"
+
+[[peg_fixture]]
+peg = "peg_optional.peg"
+entry = "main"
+stem = "peg_optional"
+
+[[peg_fixture]]
+peg = "peg_lookahead.peg"
+entry = "main"
+stem = "peg_lookahead"
+
+[[peg_fixture]]
+peg = "peg_positive_lookahead.peg"
+entry = "main"
+stem = "peg_positive_lookahead"
+
+[[peg_fixture]]
+peg = "peg_hex_color.peg"
+entry = "main"
+stem = "peg_hex_color"
 
 # Website demo examples (generated into web/src/examples.js).
 # `stem` must match a [[fixture]] entry; `key` is the stable web picker id.

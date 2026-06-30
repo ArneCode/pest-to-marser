@@ -1,6 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use syn::parse_quote;
 
@@ -28,34 +26,6 @@ const RUST_KEYWORDS: &[&str] = &[
     "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
     "super", "trait", "true", "type", "unsafe", "use", "where", "while", "yield",
 ];
-
-static AGENT_DEBUG_LOG_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: String) {
-    if AGENT_DEBUG_LOG_COUNT.fetch_add(1, Ordering::Relaxed) >= 10 {
-        return;
-    }
-    // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/home/arne/projects/parsing/grammar-to-marser/.cursor/debug-51eef6.log")
-    {
-        let _ = writeln!(
-            file,
-            "{{\"sessionId\":\"51eef6\",\"runId\":\"initial\",\"hypothesisId\":{:?},\"location\":{:?},\"message\":{:?},\"data\":{},\"timestamp\":{}}}",
-            hypothesis_id,
-            location,
-            message,
-            data,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
-    }
-    // #endregion
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CodegenMode {
@@ -421,20 +391,6 @@ fn format_expr_str(source: &str, column: usize) -> Result<String, ConvertError> 
     let body = extract_fn_body_expr(&formatted)?;
     let normalized = dedent_lines(&strip_fn_body_indent(&body));
     let normalized = restore_bind_placeholders(&normalized);
-    if normalized.lines().count() > source.lines().count() || source.len() > 80 {
-        agent_debug_log(
-            "H4",
-            "src/codegen.rs:format_expr_str",
-            "pretty formatter expanded expression layout",
-            format!(
-                "{{\"sourceChars\":{},\"sourceLines\":{},\"outputLines\":{},\"column\":{}}}",
-                source.len(),
-                source.lines().count(),
-                normalized.lines().count(),
-                column
-            ),
-        );
-    }
     Ok(indent_lines(&normalized, column))
 }
 
@@ -1448,15 +1404,6 @@ impl<'a> Generator<'a> {
             false,
             false,
         );
-        agent_debug_log(
-            "H1,H5",
-            "src/codegen.rs:gen_body",
-            "rule normalized expression and emitted matcher body",
-            format!(
-                "{{\"rule\":{:?},\"context\":{:?},\"expr\":{:?},\"body\":{:?}}}",
-                sym.rule, sym.context, rule.expr, inner
-            ),
-        );
         let inner_column = match layout {
             BodyLayout::AssignmentContinuation => base_column + 4,
             BodyLayout::Block => 4,
@@ -1726,19 +1673,6 @@ impl<'a> Generator<'a> {
                 suppress_bind,
             ));
         }
-        if has_ws && ctx == MatchingContext::NormalWs && items.len() > 1 {
-            agent_debug_log(
-                "H2",
-                "src/codegen.rs:gen_sequence",
-                "normal-context sequence inserted whitespace matchers",
-                format!(
-                    "{{\"itemCount\":{},\"insertedWhitespace\":{},\"parts\":{:?}}}",
-                    items.len(),
-                    items.len().saturating_sub(1),
-                    parts
-                ),
-            );
-        }
         if mode == CodegenMode::Matcher {
             render_nested_tuple(&parts)
         } else {
@@ -1797,29 +1731,9 @@ impl<'a> Generator<'a> {
         if self.uses_ws(ctx) {
             let ws = self.ws_ref();
             if !at_least_one {
-                let rendered = format!("repeat_ws({inner}, {ws})");
-                agent_debug_log(
-                    "H3",
-                    "src/codegen.rs:gen_unbounded_repeat",
-                    "whitespace-aware zero-or-more lowered through helper",
-                    format!(
-                        "{{\"atLeastOne\":{},\"usesWhitespace\":true,\"inner\":{:?},\"rendered\":{:?}}}",
-                        at_least_one, inner, rendered
-                    ),
-                );
-                return rendered;
+                return format!("repeat_ws({inner}, {ws})");
             }
-            let rendered = format!("repeat_one_or_more_ws({inner}, {ws})");
-            agent_debug_log(
-                "H3",
-                "src/codegen.rs:gen_unbounded_repeat",
-                "whitespace-aware one-or-more lowered through helper",
-                format!(
-                    "{{\"atLeastOne\":{},\"usesWhitespace\":true,\"inner\":{:?},\"rendered\":{:?}}}",
-                    at_least_one, inner, rendered
-                ),
-            );
-            return rendered;
+            return format!("repeat_one_or_more_ws({inner}, {ws})");
         }
         if !at_least_one {
             return format!("many({inner})");

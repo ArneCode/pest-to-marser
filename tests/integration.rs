@@ -1,6 +1,7 @@
 use marser::parser::Parser;
 use grammar_to_marser::{
-    convert_grammar_source, parse_pest_grammar, ConvertError, ConvertOptions,
+    convert_grammar_source, convert_source, parse_peg_grammar, parse_pest_grammar, ConvertError,
+    ConvertOptions, InputSyntax,
 };
 use serde::Deserialize;
 
@@ -10,11 +11,20 @@ mod e2e;
 #[derive(Deserialize)]
 struct Manifest {
     fixture: Vec<FixtureEntry>,
+    #[serde(default)]
+    peg_fixture: Vec<PegFixtureEntry>,
 }
 
 #[derive(Deserialize)]
 struct FixtureEntry {
     pest: String,
+    entry: String,
+    stem: String,
+}
+
+#[derive(Deserialize)]
+struct PegFixtureEntry {
+    peg: String,
     entry: String,
     stem: String,
 }
@@ -29,6 +39,18 @@ fn meta_grammar_parses_fully() {
     parse_pest_grammar()
         .parse_str(src)
         .expect("meta grammar should parse");
+}
+
+#[test]
+fn peg_meta_grammar_parses_fixtures() {
+    let manifest = fixture_manifest();
+    for fixture in manifest.peg_fixture {
+        let src = std::fs::read_to_string(format!("tests/fixtures/{}", fixture.peg))
+            .unwrap_or_else(|e| panic!("read {}: {e}", fixture.peg));
+        parse_peg_grammar()
+            .parse_str(&src)
+            .unwrap_or_else(|e| panic!("parse {}: {e:?}", fixture.peg));
+    }
 }
 
 #[test]
@@ -96,6 +118,31 @@ fn committed_generated_snapshots_match_converter() {
             },
         )
         .unwrap_or_else(|e| panic!("convert {}: {e:?}", fixture.pest));
+        assert_eq!(
+            actual, expected,
+            "stale {generated_path} — run: cargo run --bin update-test-fixtures"
+        );
+    }
+}
+
+#[test]
+fn committed_peg_generated_snapshots_match_converter() {
+    for fixture in fixture_manifest().peg_fixture {
+        let peg_path = format!("tests/fixtures/{}", fixture.peg);
+        let generated_path = format!("tests/generated/{}.rs", fixture.stem);
+        let src =
+            std::fs::read_to_string(&peg_path).unwrap_or_else(|e| panic!("read {peg_path}: {e}"));
+        let expected = std::fs::read_to_string(&generated_path)
+            .unwrap_or_else(|e| panic!("read {generated_path}: {e}"));
+        let actual = convert_source(
+            &src,
+            InputSyntax::Peg,
+            &ConvertOptions {
+                entry_rule: fixture.entry.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("convert {}: {e:?}", fixture.peg));
         assert_eq!(
             actual, expected,
             "stale {generated_path} — run: cargo run --bin update-test-fixtures"
@@ -368,6 +415,131 @@ mod e2e_exact_repeat {
                 reject!("aaaa"),
                 reject!(""),
                 reject!("b"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_simple {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_simple.peg";
+            generated = peg_simple;
+            entry = main;
+            corpus = [
+                accept!("a=1"),
+                accept!("a=1,b=2"),
+                accept!("x=9,y=8,z=7"),
+                accept!("_a=0"),
+                reject!(""),
+                reject!("a="),
+                reject!("1=1"),
+                reject!("a=1,"),
+                reject!("a=1,,b=2"),
+                reject!("a=1 b=2"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_calc {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_calc.peg";
+            generated = peg_calc;
+            entry = expr;
+            corpus = [
+                accept!("1"),
+                accept!("1+2"),
+                accept!("1+2*3"),
+                accept!("(1+2)*3"),
+                accept!("10/2-3"),
+                accept!("2*3+4"),
+                accept!("(1)"),
+                accept!("1+2+3"),
+                reject!(""),
+                reject!("1+"),
+                reject!("1++2"),
+                reject!("1 2"),
+                reject!("((1)"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_optional {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_optional.peg";
+            generated = peg_optional;
+            entry = main;
+            corpus = [
+                accept!("42"),
+                accept!("+42"),
+                accept!("-7"),
+                accept!("0"),
+                reject!(""),
+                reject!("++1"),
+                reject!("+"),
+                reject!("4.2"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_lookahead {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_lookahead.peg";
+            generated = peg_lookahead;
+            entry = main;
+            corpus = [
+                reject!("aend"),
+                accept!("hello end"),
+                accept!("hello world end"),
+                accept!("foo_bar end"),
+                reject!("hello"),
+                reject!("end"),
+                reject!(""),
+                accept!("helloend end"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_positive_lookahead {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_positive_lookahead.peg";
+            generated = peg_positive_lookahead;
+            entry = main;
+            corpus = [
+                accept!("ab"),
+                reject!("ab "),
+                reject!("a"),
+                reject!("abc"),
+                reject!(""),
+                reject!("xab"),
+            ];
+        }
+    }
+}
+
+mod e2e_peg_hex_color {
+    peg_marser_e2e! {
+        mod inner {
+            grammar = "tests/fixtures/peg_hex_color.peg";
+            generated = peg_hex_color;
+            entry = main;
+            corpus = [
+                accept!("#ff00aa"),
+                accept!("#FF00AA"),
+                accept!("#012345"),
+                reject!("#gg0000"),
+                reject!("#fff"),
+                reject!("#1234567"),
+                reject!(""),
+                reject!("ff00aa"),
             ];
         }
     }
