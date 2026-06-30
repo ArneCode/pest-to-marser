@@ -273,7 +273,7 @@ const TOUR_STEPS = [
   },
   {
     targetId: "grammar-panel",
-    text: "Grammar reference shows the constructs this converter supports, plus links to the Pest book and Marser docs. Check here first if a conversion fails.",
+    text: "Grammar reference shows the constructs this converter supports, plus links to format docs (Pest book or PEG on Wikipedia) and Marser docs. Check here first if a conversion fails.",
   },
 ];
 

@@ -176,24 +176,25 @@
         <div>
           <h3>Supported</h3>
           <ul>
-            <li>Sequences (<code>~</code>), choices (<code>|</code>), repetition (<code>*</code> <code>+</code> <code>?</code> bounds)</li>
-            <li>Rule modifiers — silent (<code>_</code>), atomic (<code>@</code> <code>$</code>), non-atomic (<code>!</code>)</li>
-            <li>Implicit whitespace / comment skipping via <code>WHITESPACE</code> and <code>COMMENT</code> rules</li>
-            <li>Lookaheads (<code>&amp;</code> positive, <code>!</code> negative), case-insensitive strings (<code>^"…"</code>)</li>
-            <li>Character ranges (<code>'a'..'z'</code>) and builtins: <code>ASCII_DIGIT</code>, <code>ASCII_ALPHA</code>, <code>ANY</code>, …</li>
-            <li>Right recursion via Marser's <code>recursive</code> helpers</li>
+            <li>Grouping, sequences, and choice: <code>(...)</code>, <code>~</code>, <code>|</code></li>
+            <li>Predicates and repetition: <code>&amp;</code>, <code>!</code>, <code>?</code>, <code>*</code>, <code>+</code>, <code>{n}</code>, <code>{n,}</code>, <code>{,n}</code>, <code>{n,m}</code></li>
+            <li>Rule modifiers: silent <code>_</code>, atomic <code>@</code>, compound atomic <code>$</code>, non-atomic <code>!</code></li>
+            <li>Strings, case-insensitive strings, ranges, and node tags: <code>"..."</code>, <code>^"..."</code>, <code>'a'..'z'</code>, <code>#name = expr</code></li>
+            <li>Implicit trivia via <code>WHITESPACE</code> and <code>COMMENT</code> rules</li>
+            <li>Builtins: <code>SOI</code>, <code>EOI</code>, <code>ANY</code>, <code>NEWLINE</code>, <code>ASCII_DIGIT</code>, <code>ASCII_NONZERO_DIGIT</code>, <code>ASCII_BIN_DIGIT</code>, <code>ASCII_OCT_DIGIT</code>, <code>ASCII_HEX_DIGIT</code>, <code>ASCII_ALPHA_LOWER</code>, <code>ASCII_ALPHA_UPPER</code>, <code>ASCII_ALPHA</code>, <code>ASCII_ALPHANUMERIC</code></li>
+            <li>Right and mutual recursion, up to 12 rules per recursive group</li>
           </ul>
-          <p class="grammar-ref-link"><a href="https://pest.rs/book/" target="_blank" rel="noopener">Pest book ↗</a></p>
+          <p class="grammar-ref-link"><a href="https://pest.rs/book/" target="_blank" rel="noopener">Pest book ↗</a> · <a href="https://docs.rs/marser" target="_blank" rel="noopener">Marser docs ↗</a></p>
         </div>
         <div>
           <h3 class="grammar-not">Not yet supported</h3>
           <ul>
-            <li>Stack operations: <code>PUSH</code>, <code>POP</code>, <code>PEEK</code>, <code>DROP</code></li>
+            <li>Stack constructs: <code>PUSH</code>, <code>PUSH_LITERAL</code>, <code>POP</code>, <code>POP_ALL</code>, <code>DROP</code>, <code>PEEK</code>, <code>PEEK_ALL</code></li>
             <li>Left recursion</li>
-            <li>Mutual recursion groups larger than 12 rules</li>
+            <li>Recursive groups larger than 12 rules</li>
             <li>Pest-style <code>Pair</code> trees, spans, or <code>.memoized()</code></li>
           </ul>
-          <p class="grammar-output-note">The generated parser returns a typed <code>Parsed&lt;'src&gt;</code> enum — one variant per rule. Replace the placeholder fields with your own AST types. <a href="https://docs.rs/marser" target="_blank" rel="noopener">Marser docs ↗</a></p>
+          <p class="grammar-output-note">Some unsupported constructs are still parsed so the editor can point at them precisely, but conversion fails with an explicit error. Generated output returns a typed <code>Parsed&lt;'src&gt;</code> enum with one variant per rule; tagged binds become named fields and leaf rules store their matched slice as <code>value</code>.</p>
         </div>
       </div>
 
@@ -203,10 +204,12 @@
           <h3>Supported</h3>
           <ul>
             <li>Sequences (juxtaposition), choices (<code>/</code>), repetition (<code>*</code> <code>+</code> <code>?</code>)</li>
-            <li>Character classes (<code>[a-z]</code>, <code>[A-Z0-9_]</code>) and string literals</li>
-            <li>Grouping with <code>()</code> and tagged binds (<code>name=rule</code>)</li>
-            <li>Lookaheads (<code>&amp;</code> positive, <code>!</code> negative)</li>
+            <li>Grouping and predicates: <code>()</code>, <code>&amp;</code>, <code>!</code></li>
+            <li>String literals, char literals, character classes, and any-character: <code>"..."</code>, <code>'x'</code>, <code>[a-z]</code>, <code>.</code></li>
+            <li>Rule references and tagged binds: <code>name</code>, <code>name=term</code>, <code>#name=term</code></li>
+            <li><code>//</code> line comments</li>
           </ul>
+          <p class="grammar-ref-link"><a href="https://en.wikipedia.org/wiki/Parsing_expression_grammar" target="_blank" rel="noopener">PEG (Wikipedia) ↗</a> · <a href="https://docs.rs/marser" target="_blank" rel="noopener">Marser docs ↗</a></p>
         </div>
         <div>
           <h3 class="grammar-not">Differences from Pest</h3>
@@ -215,6 +218,7 @@
             <li>Left recursion is not supported</li>
             <li>Mutual recursion groups larger than 12 rules</li>
           </ul>
+          <p class="grammar-output-note">Generated output returns a typed <code>Parsed&lt;'src&gt;</code> enum with one variant per rule; tagged binds become named fields and leaf rules store their matched slice as <code>value</code>.</p>
         </div>
       </div>
 
