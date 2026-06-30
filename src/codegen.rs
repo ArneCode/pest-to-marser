@@ -518,6 +518,34 @@ fn indent_block(text: &str, column: usize) -> String {
     indent_lines(text, column)
 }
 
+const MAX_MATCHER_TUPLE_ARITY: usize = 12;
+
+fn render_nested_tuple(parts: &[String]) -> String {
+    if parts.is_empty() {
+        return "()".to_string();
+    }
+    if parts.len() <= MAX_MATCHER_TUPLE_ARITY {
+        return format!("({})", parts.join(", "));
+    }
+    let split = MAX_MATCHER_TUPLE_ARITY - 1;
+    let mut outer = parts[..split].to_vec();
+    outer.push(render_nested_tuple(&parts[split..]));
+    format!("({})", outer.join(", "))
+}
+
+fn render_nested_one_of(parts: &[String]) -> String {
+    if parts.is_empty() {
+        return "one_of(())".to_string();
+    }
+    if parts.len() <= MAX_MATCHER_TUPLE_ARITY {
+        return format!("one_of(({}))", parts.join(", "));
+    }
+    let split = MAX_MATCHER_TUPLE_ARITY - 1;
+    let mut outer = parts[..split].to_vec();
+    outer.push(render_nested_one_of(&parts[split..]));
+    format!("one_of(({}))", outer.join(", "))
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct ImportNeeds {
     any_token: bool,
@@ -1597,7 +1625,7 @@ impl<'a> Generator<'a> {
                         )
                     })
                     .collect();
-                format!("one_of(({}))", parts.join(", "))
+                render_nested_one_of(&parts)
             }
             (Expr::Prefix { op, expr }, _) => {
                 let in_la = matches!(
@@ -1705,7 +1733,7 @@ impl<'a> Generator<'a> {
             );
         }
         if mode == CodegenMode::Matcher {
-            format!("({})", parts.join(", "))
+            render_nested_tuple(&parts)
         } else {
             unreachable!("sequences are emitted as matcher tuples")
         }
@@ -1910,7 +1938,7 @@ impl<'a> Generator<'a> {
         if parts.len() == 1 {
             parts.into_iter().next().unwrap()
         } else {
-            format!("({})", parts.join(", "))
+            render_nested_tuple(&parts)
         }
     }
 
@@ -1937,7 +1965,7 @@ impl<'a> Generator<'a> {
             return "capture!(() => ())".to_string();
         }
         let parts: Vec<String> = s.chars().map(|c| format!("ci_ch({c:?})")).collect();
-        format!("capture!(({}) => ())", parts.join(", "))
+        format!("capture!({} => ())", render_nested_tuple(&parts))
     }
 
     fn gen_builtin(&self, b: Builtin) -> String {
@@ -2438,5 +2466,35 @@ mod format_tests {
             "expected multiline struct literal, got:\n{out}"
         );
         assert!(out.contains("factor_val:"));
+    }
+
+    #[test]
+    fn render_nested_tuple_chunks_after_twelve_elements() {
+        let parts: Vec<String> = (1..=13).map(|i| format!("p{i}")).collect();
+        assert_eq!(
+            render_nested_tuple(&parts),
+            "(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, (p12, p13))"
+        );
+    }
+
+    #[test]
+    fn render_nested_one_of_chunks_after_twelve_elements() {
+        let parts: Vec<String> = (1..=13).map(|i| format!("p{i}")).collect();
+        assert_eq!(
+            render_nested_one_of(&parts),
+            "one_of((p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, one_of((p12, p13))))"
+        );
+    }
+
+    #[test]
+    fn render_nested_tuple_chunks_long_insensitive_literal() {
+        let parts: Vec<String> = "abcdefghijklm"
+            .chars()
+            .map(|c| format!("ci_ch({c:?})"))
+            .collect();
+        assert_eq!(
+            render_nested_tuple(&parts),
+            "(ci_ch('a'), ci_ch('b'), ci_ch('c'), ci_ch('d'), ci_ch('e'), ci_ch('f'), ci_ch('g'), ci_ch('h'), ci_ch('i'), ci_ch('j'), ci_ch('k'), (ci_ch('l'), ci_ch('m')))"
+        );
     }
 }
