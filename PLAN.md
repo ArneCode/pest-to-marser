@@ -1,4 +1,4 @@
-# pest-to-marser: conversion plan
+# grammar-to-marser: conversion plan
 
 This document captures the current design for converting pest grammars into marser parser code.
 
@@ -31,7 +31,7 @@ Unsupported constructs that can affect matching are hard conversion errors, not 
 
 ```
 pest source
-  -> strict AST parse (get_pest_grammar + end_of_input)
+  -> strict AST parse (parse_pest_grammar + end_of_input)
   -> rule table + duplicate-name validation
   -> explicit entry rule validation
   -> raw AST -> normalized Expr tree
@@ -314,7 +314,7 @@ Start with tiny fixtures before JSON/calc-size grammars.
 ## v1 scope checklist
 
 - [x] Parse pest grammar -> raw AST
-- [ ] Require full input consumption in `get_pest_grammar`
+- [ ] Require full input consumption in `parse_pest_grammar`
 - [ ] Rule table + duplicate-name validation
 - [ ] Explicit entry rule handling
 - [ ] Raw AST -> normalized `Expr`

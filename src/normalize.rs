@@ -1,9 +1,9 @@
 use crate::ast::{
-    Expression, Grammar, GrammarItem, GrammarRule, InfixOp, Node, PostfixOp, PrefixOp, Term,
-    Terminal,
+    Expression, Grammar, GrammarItem, GrammarRule, InfixOp, Node, Term, Terminal,
 };
 use crate::error::{ConvertError, ConvertResult};
 use crate::expr::{Builtin, Expr};
+use crate::syntax::InputSyntax;
 
 #[derive(Clone, Debug)]
 pub struct RuleDef {
@@ -21,13 +21,13 @@ pub struct RuleTable {
     pub has_comment: bool,
 }
 
-pub fn build_rule_table(grammar: &Grammar) -> ConvertResult<RuleTable> {
+pub fn build_rule_table(grammar: &Grammar, syntax: InputSyntax) -> ConvertResult<RuleTable> {
     let mut errors = Vec::new();
     let mut grammar_docs = Vec::new();
     let mut rules = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut has_whitespace = false;
-    let mut has_comment = false;
+    let mut has_whitespace_rule = false;
+    let mut has_comment_rule = false;
 
     for item in &grammar.items {
         match item {
@@ -44,10 +44,10 @@ pub fn build_rule_table(grammar: &Grammar) -> ConvertResult<RuleTable> {
                         continue;
                     }
                     if name == "WHITESPACE" {
-                        has_whitespace = true;
+                        has_whitespace_rule = true;
                     }
                     if name == "COMMENT" {
-                        has_comment = true;
+                        has_comment_rule = true;
                     }
                     match normalize_expression(expression) {
                         Ok(expr) => rules.push(RuleDef {
@@ -98,11 +98,12 @@ pub fn build_rule_table(grammar: &Grammar) -> ConvertResult<RuleTable> {
         resolve_builtins(&mut rule.expr, &defined);
     }
 
+    let implicit_ws = syntax == InputSyntax::Pest;
     Ok(RuleTable {
         rules: resolved_rules,
         grammar_docs,
-        has_whitespace,
-        has_comment,
+        has_whitespace: implicit_ws && has_whitespace_rule,
+        has_comment: implicit_ws && has_comment_rule,
     })
 }
 
@@ -287,7 +288,7 @@ fn resolve_builtins(expr: &mut Expr, defined: &std::collections::HashSet<String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{GrammarItem, Modifier};
+    use crate::ast::{GrammarItem, Modifier, PostfixOp, PrefixOp};
 
     fn rule(name: &str, expr: Expression) -> Grammar {
         Grammar {
@@ -311,7 +312,7 @@ mod tests {
             }],
             infix_ops: vec![],
         };
-        let table = build_rule_table(&rule("r", expr)).unwrap();
+        let table = build_rule_table(&rule("r", expr), crate::syntax::InputSyntax::Pest).unwrap();
         assert_eq!(
             table.rules[0].expr,
             Expr::Choice(vec![Expr::Empty, Expr::Literal("a".to_string()),])
@@ -343,7 +344,7 @@ mod tests {
             terms: vec![a, b, c],
             infix_ops: vec![InfixOp::Sequence, InfixOp::Choice],
         };
-        let table = build_rule_table(&rule("r", expr)).unwrap();
+        let table = build_rule_table(&rule("r", expr), crate::syntax::InputSyntax::Pest).unwrap();
         assert_eq!(
             table.rules[0].expr,
             Expr::Choice(vec![
@@ -368,7 +369,7 @@ mod tests {
             }],
             infix_ops: vec![],
         };
-        let table = build_rule_table(&rule("r", expr)).unwrap();
+        let table = build_rule_table(&rule("r", expr), crate::syntax::InputSyntax::Pest).unwrap();
         assert_eq!(
             table.rules[0].expr,
             Expr::Prefix {
@@ -400,7 +401,7 @@ mod tests {
             terms: vec![a, b],
             infix_ops: vec![InfixOp::Sequence],
         };
-        let table = build_rule_table(&rule("r", expr)).unwrap();
+        let table = build_rule_table(&rule("r", expr), crate::syntax::InputSyntax::Pest).unwrap();
         assert_eq!(
             table.rules[0].expr,
             Expr::Choice(vec![
@@ -447,7 +448,7 @@ mod tests {
                 }),
             ],
         };
-        let table = build_rule_table(&grammar).unwrap();
+        let table = build_rule_table(&grammar, crate::syntax::InputSyntax::Pest).unwrap();
         let main = table.rules.iter().find(|r| r.name == "main").unwrap();
         assert_eq!(main.expr, Expr::RuleRef("ANY".to_string()));
     }
@@ -486,7 +487,7 @@ mod tests {
                 }),
             ],
         };
-        let err = build_rule_table(&grammar).unwrap_err();
+        let err = build_rule_table(&grammar, crate::syntax::InputSyntax::Pest).unwrap_err();
         assert!(matches!(err[0], ConvertError::DuplicateRule { .. }));
     }
 }

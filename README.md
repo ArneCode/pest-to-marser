@@ -1,17 +1,17 @@
-# pest-to-marser
+# grammar-to-marser
 
-Convert [Pest](https://pest.rs/) grammars into [Marser](https://crates.io/crates/marser) parser combinators in Rust.
+Convert grammars (currently [Pest](https://pest.rs/) and a supported PEG subset) into [Marser](https://crates.io/crates/marser) parser combinators in Rust.
 
-The generated output is a single `grammar()` function that returns a Marser parser. For the chosen entry rule, the converter targets strict language equivalence with Pest: the same complete inputs are accepted or rejected. The parser output type is a generated `Parsed<'src>` enum with one variant per rule.
+The generated output is a single `grammar()` function that returns a Marser parser. For the chosen entry rule, the converter targets strict language equivalence with the selected syntax where implemented. The parser output type is a generated `Parsed<'src>` enum with one variant per rule.
 
-**Try it in the browser:** [https://pest-to-marser.arnedebo.com](https://pest-to-marser.arnedebo.com) — paste a grammar, preview the Rust output, download a Cargo project, or share a link.
+**Try it in the browser:** [https://grammar-to-marser.arnedebo.com](https://grammar-to-marser.arnedebo.com) — paste a grammar, preview the Rust output, download a Cargo project, or share a link.
 
-> **Note:** This project was almost entirely vibe coded. If you run into bugs or rough edges, feel free to [open an issue](https://github.com/ArneCode/pest-to-marser/issues).
+> **Note:** This project was almost entirely vibe coded. If you run into bugs or rough edges, feel free to [open an issue](https://github.com/ArneCode/grammar-to-marser/issues).
 
 ## Install
 
 ```bash
-cargo install pest-to-marser
+cargo install grammar-to-marser
 ```
 
 Or build from this repository:
@@ -23,13 +23,14 @@ cargo install --path .
 ## Usage
 
 ```bash
-pest-to-marser <grammar.pest> [entry_rule] [--output <path>] [--trace]
+grammar-to-marser <grammar-file> [entry_rule] [--syntax pest|peg] [--output <path>] [--trace]
 ```
 
 | Argument | Description |
 |----------|-------------|
-| `grammar.pest` | Path to the Pest grammar file |
+| `grammar-file` | Path to the grammar file |
 | `entry_rule` | Rule to use as the parser entry point (defaults to the last rule in the file) |
+| `--syntax pest\|peg` | Input grammar syntax (defaults to `pest`) |
 | `--output <path>` | Write generated Rust to a file instead of stdout |
 | `--trace` | Emit trace instrumentation in the generated parser |
 
@@ -48,7 +49,7 @@ WHITESPACE = _{ " " | "\t" }
 Generate a parser for the `expr` rule:
 
 ```bash
-pest-to-marser calc.pest expr
+grammar-to-marser calc.pest expr --syntax pest
 ```
 
 The output is Rust source defining `pub fn grammar<'src>() -> impl Parser<'src, &'src str, Output = Parsed<'src>> + Clone`, plus a `Parsed<'src>` enum. Each rule becomes a variant; fields come from binds inside that rule. Nested rule values are `Box<Parsed<'src>>`; leaf rules capture their matched slice as `&'src str`. Use it with Marser's `Parser::parse_str` or `parse_whole_input`:
@@ -65,9 +66,9 @@ let parsed = parser.parse_whole_input("1 + 2 * 3").unwrap();
 The conversion logic is also available as a library:
 
 ```rust
-use pest_to_marser::{ConvertOptions, convert_pest_source};
+use grammar_to_marser::{ConvertOptions, convert_grammar_source};
 
-let rust = convert_pest_source(
+let rust = convert_grammar_source(
     pest_source,
     &ConvertOptions {
         entry_rule: "expr".to_string(),
@@ -76,7 +77,7 @@ let rust = convert_pest_source(
 )?;
 ```
 
-Other exports include `convert_pest_grammar`, `list_pest_rules`, and `get_pest_grammar` for working with the parsed grammar AST.
+Other exports include `convert_source`, `list_rules`, `convert_grammar`, `list_grammar_rules`, `parse_pest_grammar`, and `parse_peg_grammar`.
 
 ## Supported Pest features
 

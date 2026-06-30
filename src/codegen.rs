@@ -39,7 +39,7 @@ fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: Str
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/home/arne/projects/parsing/pest-to-marser/.cursor/debug-51eef6.log")
+        .open("/home/arne/projects/parsing/grammar-to-marser/.cursor/debug-51eef6.log")
     {
         let _ = writeln!(
             file,
@@ -83,12 +83,19 @@ fn parse_rule_start(line: &str) -> Option<(String, i32)> {
     if trimmed.starts_with("//") {
         return None;
     }
-    let eq_pos = trimmed.find('=')?;
-    let name = trimmed[..eq_pos].trim();
+    let (name, rest) = if let Some(arrow_pos) = trimmed.find("<-") {
+        let name = trimmed[..arrow_pos].trim();
+        let rest = &trimmed[arrow_pos + 2..];
+        (name, rest)
+    } else {
+        let eq_pos = trimmed.find('=')?;
+        let name = trimmed[..eq_pos].trim();
+        let rest = &trimmed[eq_pos + 1..];
+        (name, rest)
+    };
     if name.is_empty() || !name.chars().all(is_rule_name_char) {
         return None;
     }
-    let rest = &trimmed[eq_pos + 1..];
     Some((name.to_string(), net_brace_delta(rest)))
 }
 
@@ -401,7 +408,7 @@ fn format_expr_str(source: &str, column: usize) -> Result<String, ConvertError> 
     let source_for_parse = substitute_bind_placeholders(source);
     let expr: syn::Expr = syn::parse_str(&source_for_parse).map_err(codegen_format_err)?;
     let wrapper: syn::ItemFn = parse_quote! {
-        fn __pest_to_marser_fmt__() {
+        fn __grammar_to_marser_fmt__() {
             #expr;
         }
     };

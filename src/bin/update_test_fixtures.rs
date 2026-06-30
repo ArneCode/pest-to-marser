@@ -1,4 +1,4 @@
-use pest_to_marser::{ConvertOptions, convert_pest_source};
+use grammar_to_marser::{convert_grammar_source, ConvertOptions};
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
@@ -27,7 +27,7 @@ fn main() {
         let pest_path = root.join("tests/fixtures").join(&fixture.pest);
         let source = fs::read_to_string(&pest_path)
             .unwrap_or_else(|e| panic!("read {}: {e}", pest_path.display()));
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             &source,
             &ConvertOptions {
                 entry_rule: fixture.entry.clone(),

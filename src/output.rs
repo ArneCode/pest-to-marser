@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{Modifier, PostfixOp, PrefixOp};
-use crate::expr::{Builtin, Expr};
+use crate::expr::Expr;
 use crate::normalize::RuleDef;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -438,7 +438,8 @@ pub fn emit_parsed_enum(rules: &[RuleDef], exclude: &HashSet<String>) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{PostfixOp, PrefixOp};
+    use crate::ast::PostfixOp;
+    use crate::expr::Builtin;
     use crate::normalize::RuleDef;
 
     fn rules_map(rules: &[RuleDef]) -> HashMap<String, &RuleDef> {

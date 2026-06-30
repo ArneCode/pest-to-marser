@@ -141,6 +141,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "grammar-to-marser"
+version = "0.1.0"
+dependencies = [
+ "marser",
+ "pest",
+ "pest_derive",
+ "prettyplease",
+ "proptest",
+ "quote",
+ "serde",
+ "syn",
+ "toml",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -248,21 +263,6 @@ checksum = "e0848c601009d37dfa3430c4666e147e49cdcf1b92ecd3e63657d8a5f19da662"
 dependencies = [
  "memchr",
  "ucd-trie",
-]
-
-[[package]]
-name = "pest-to-marser"
-version = "0.1.0"
-dependencies = [
- "marser",
- "pest",
- "pest_derive",
- "prettyplease",
- "proptest",
- "quote",
- "serde",
- "syn",
- "toml",
 ]
 
 [[package]]

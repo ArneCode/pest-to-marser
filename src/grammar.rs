@@ -524,7 +524,7 @@ fn grammar_item<'src>() -> impl Parser<'src, &'src str, Output = GrammarItem> + 
         .erase_types()
 }
 
-pub fn get_pest_grammar<'src>() -> impl Parser<'src, &'src str, Output = Grammar> + Clone {
+pub fn parse_pest_grammar<'src>() -> impl Parser<'src, &'src str, Output = Grammar> + Clone {
     capture!((
         start_of_input(),
         ws(),
@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn parses_simple_rule() {
         let src = r#"rule = { "hello" }"#;
-        let grammar = get_pest_grammar().parse_str(src).unwrap().0;
+        let grammar = parse_pest_grammar().parse_str(src).unwrap().0;
         assert_eq!(grammar.items.len(), 1);
         match &grammar.items[0] {
             GrammarItem::Rule(GrammarRule::Valid { name, modifier, .. }) => {
@@ -563,7 +563,7 @@ mod tests {
     fn recovers_invalid_rule_and_parses_following_rule() {
         let src = r#"bad = broken
 good = { "ok" }"#;
-        let (grammar, errors) = get_pest_grammar().parse_str(src).unwrap();
+        let (grammar, errors) = parse_pest_grammar().parse_str(src).unwrap();
         assert!(!errors.is_empty());
         assert_eq!(grammar.items.len(), 2);
         match &grammar.items[0] {
@@ -580,7 +580,7 @@ good = { "ok" }"#;
     fn recovers_invalid_braced_rule_and_parses_following_rule() {
         let src = r#"bad = { "a" ~ }
 good = { "ok" }"#;
-        let (grammar, errors) = get_pest_grammar().parse_str(src).unwrap();
+        let (grammar, errors) = parse_pest_grammar().parse_str(src).unwrap();
         assert!(!errors.is_empty());
         assert_eq!(grammar.items.len(), 2);
         match &grammar.items[0] {
@@ -612,8 +612,9 @@ good = { "ok" }"#;
 
         let src = r#"bad = { "a" ~ }
 good = { "ok" }"#;
-        let path = std::env::temp_dir().join("pest_to_marser_recovery_trace.json");
-        let result = get_pest_grammar().parse_str_with_trace_to_file(src, &path, TraceFormat::Json);
+        let path = std::env::temp_dir().join("grammar_to_marser_recovery_trace.json");
+        let result =
+            parse_pest_grammar().parse_str_with_trace_to_file(src, &path, TraceFormat::Json);
         eprintln!("trace: {}", path.display());
         eprintln!("result: {}", if result.is_ok() { "ok" } else { "err" });
         let _ = result;
@@ -624,7 +625,7 @@ good = { "ok" }"#;
         let src = r#"bad = { "a" ~ }
 worse = { | }
 good = { "ok" }"#;
-        let (grammar, errors) = get_pest_grammar().parse_str(src).unwrap();
+        let (grammar, errors) = parse_pest_grammar().parse_str(src).unwrap();
         assert!(
             errors.len() >= 2,
             "expected at least two recovered errors, got {}",
@@ -650,7 +651,7 @@ good = { "ok" }"#;
         let src = r#"bad = { "a" ~ }
 /// parsed after recovery
 good = { "ok" }"#;
-        let (grammar, errors) = get_pest_grammar().parse_str(src).unwrap();
+        let (grammar, errors) = parse_pest_grammar().parse_str(src).unwrap();
         assert!(!errors.is_empty());
         assert_eq!(grammar.items.len(), 3);
         match &grammar.items[0] {
@@ -670,7 +671,7 @@ good = { "ok" }"#;
     #[test]
     fn parses_pest_meta_grammar() {
         let src = include_str!("../tests/fixtures/grammar.pest");
-        get_pest_grammar().parse_str(src).unwrap();
+        parse_pest_grammar().parse_str(src).unwrap();
     }
 
     #[test]

@@ -3,8 +3,10 @@ use crate::codegen::{CodegenOptions, generate_rust, prepare_codegen};
 use crate::error::{
     ConvertError, ConvertResult, parse_error_from_furthest_fail, parse_error_from_parser_error,
 };
-use crate::grammar::get_pest_grammar;
+use crate::grammar::parse_pest_grammar;
 use crate::normalize::{RuleDef, RuleTable, build_rule_table};
+use crate::peg::parse_peg_grammar;
+use crate::syntax::InputSyntax;
 use crate::validate::validate_all;
 use marser::error::ParserError;
 use marser::parser::Parser;
@@ -39,12 +41,20 @@ fn resolve_entry_rule(rules: &[RuleDef], entry_rule: &str) -> ConvertResult<Stri
     })
 }
 
-pub fn convert_pest_source(source: &str, options: &ConvertOptions) -> ConvertResult<String> {
-    let (grammar, parse_errors) = get_pest_grammar()
-        .parse_str(source)
-        .map_err(|err| vec![parse_error_from_furthest_fail(source, err)])?;
+fn parse_grammar_source(
+    source: &str,
+    syntax: InputSyntax,
+) -> ConvertResult<(Grammar, Vec<ConvertError>)> {
+    let (grammar, parse_errors) = match syntax {
+        InputSyntax::Pest => parse_pest_grammar()
+            .parse_str(source)
+            .map_err(|err| vec![parse_error_from_furthest_fail(source, err)])?,
+        InputSyntax::Peg => parse_peg_grammar()
+            .parse_str(source)
+            .map_err(|err| vec![parse_error_from_furthest_fail(source, err)])?,
+    };
 
-    let mut errors: Vec<ConvertError> = parse_errors
+    let errors: Vec<ConvertError> = parse_errors
         .iter()
         .map(|e: &ParserError| parse_error_from_parser_error(source, e))
         .collect();
@@ -52,8 +62,21 @@ pub fn convert_pest_source(source: &str, options: &ConvertOptions) -> ConvertRes
         return Err(errors);
     }
 
-    let table = build_rule_table(&grammar)?;
+    Ok((grammar, errors))
+}
+
+pub fn convert_source(
+    source: &str,
+    syntax: InputSyntax,
+    options: &ConvertOptions,
+) -> ConvertResult<String> {
+    let (grammar, _) = parse_grammar_source(source, syntax)?;
+    let table = build_rule_table(&grammar, syntax)?;
     convert_with_table(&table, options, Some(source))
+}
+
+pub fn convert_grammar_source(source: &str, options: &ConvertOptions) -> ConvertResult<String> {
+    convert_source(source, InputSyntax::Pest, options)
 }
 
 fn convert_with_table(
@@ -83,25 +106,18 @@ fn convert_with_table(
     .map_err(|e| vec![e])
 }
 
-pub fn list_pest_rules(source: &str) -> ConvertResult<Vec<String>> {
-    let (grammar, parse_errors) = get_pest_grammar()
-        .parse_str(source)
-        .map_err(|err| vec![parse_error_from_furthest_fail(source, err)])?;
-
-    let errors: Vec<ConvertError> = parse_errors
-        .iter()
-        .map(|e: &ParserError| parse_error_from_parser_error(source, e))
-        .collect();
-    if !errors.is_empty() {
-        return Err(errors);
-    }
-
-    let table = build_rule_table(&grammar)?;
+pub fn list_rules(source: &str, syntax: InputSyntax) -> ConvertResult<Vec<String>> {
+    let (grammar, _) = parse_grammar_source(source, syntax)?;
+    let table = build_rule_table(&grammar, syntax)?;
     Ok(table.rules.iter().map(|r| r.name.clone()).collect())
 }
 
-pub fn convert_pest_grammar(grammar: &Grammar, options: &ConvertOptions) -> ConvertResult<String> {
-    let table = build_rule_table(grammar)?;
+pub fn list_grammar_rules(source: &str) -> ConvertResult<Vec<String>> {
+    list_rules(source, InputSyntax::Pest)
+}
+
+pub fn convert_grammar(grammar: &Grammar, options: &ConvertOptions) -> ConvertResult<String> {
+    let table = build_rule_table(grammar, InputSyntax::Pest)?;
     convert_with_table(&table, options, None)
 }
 
@@ -109,7 +125,7 @@ pub fn convert_with_warnings(
     grammar: &Grammar,
     options: &ConvertOptions,
 ) -> ConvertResult<(String, Vec<String>)> {
-    let table = build_rule_table(grammar)?;
+    let table = build_rule_table(grammar, InputSyntax::Pest)?;
     let entry_rule = resolve_entry_rule(&table.rules, &options.entry_rule)?;
     validate_all(&table.rules, &entry_rule)?;
     let (graph, sccs) = match prepare_codegen(&table, &entry_rule) {
@@ -135,13 +151,13 @@ pub fn convert_with_warnings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammar::get_pest_grammar;
+    use crate::grammar::parse_pest_grammar;
 
     #[test]
     fn converts_simple_literal_rule() {
         let src = r#"main = { "hello" }"#;
-        let grammar = get_pest_grammar().parse_str(src).unwrap().0;
-        let code = convert_pest_grammar(
+        let grammar = parse_pest_grammar().parse_str(src).unwrap().0;
+        let code = convert_grammar(
             &grammar,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -161,8 +177,8 @@ WHITESPACE = _{ " " }
 main = { "hello" }
 other = { "world" }
 "#;
-        let grammar = get_pest_grammar().parse_str(src).unwrap().0;
-        let code = convert_pest_grammar(
+        let grammar = parse_pest_grammar().parse_str(src).unwrap().0;
+        let code = convert_grammar(
             &grammar,
             &ConvertOptions {
                 entry_rule: String::new(),
@@ -178,7 +194,7 @@ other = { "world" }
     #[test]
     fn emit_comments_false_omits_helper_comments() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -194,7 +210,7 @@ other = { "world" }
     #[test]
     fn emit_trace_false_omits_trace_markers() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -210,7 +226,7 @@ other = { "world" }
     #[test]
     fn emit_trace_true_adds_reference_site_markers() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -229,7 +245,7 @@ other = { "world" }
     #[test]
     fn generates_parsed_enum_output() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -248,7 +264,7 @@ other = { "world" }
     #[test]
     fn trivia_rules_emit_matchers_not_parsers() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -277,7 +293,7 @@ other = { "world" }
     #[test]
     fn dual_use_silent_tab_is_matcher() {
         let src = include_str!("../tests/fixtures/dual_trivia.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -296,7 +312,7 @@ other = { "world" }
     #[test]
     fn silent_content_rule_emits_matcher_not_parser() {
         let src = include_str!("../tests/fixtures/ranges.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -311,7 +327,7 @@ other = { "world" }
     #[test]
     fn emit_trace_skips_silent_rule_references() {
         let src = include_str!("../tests/fixtures/simple.pest");
-        let code = convert_pest_source(
+        let code = convert_grammar_source(
             src,
             &ConvertOptions {
                 entry_rule: "main".to_string(),
@@ -321,5 +337,37 @@ other = { "world" }
         )
         .unwrap();
         assert!(!code.contains("bind!(newline.clone(), ?newline_val).trace()"));
+    }
+
+    #[test]
+    fn converts_simple_peg_rule() {
+        let src = r#"main <- "hello""#;
+        let code = convert_source(
+            src,
+            InputSyntax::Peg,
+            &ConvertOptions {
+                entry_rule: "main".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(code.contains("pub fn grammar"));
+        assert!(code.contains("\"hello\""));
+    }
+
+    #[test]
+    fn peg_source_comments_are_emitted() {
+        let src = r#"main <- #v="hello""#;
+        let code = convert_source(
+            src,
+            InputSyntax::Peg,
+            &ConvertOptions {
+                entry_rule: "main".to_string(),
+                emit_comments: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(code.contains("// main <- #v=\"hello\""));
     }
 }

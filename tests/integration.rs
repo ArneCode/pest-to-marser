@@ -1,5 +1,7 @@
 use marser::parser::Parser;
-use pest_to_marser::{ConvertError, ConvertOptions, convert_pest_source, get_pest_grammar};
+use grammar_to_marser::{
+    convert_grammar_source, parse_pest_grammar, ConvertError, ConvertOptions,
+};
 use serde::Deserialize;
 
 #[macro_use]
@@ -24,7 +26,7 @@ fn fixture_manifest() -> Manifest {
 #[test]
 fn meta_grammar_parses_fully() {
     let src = include_str!("fixtures/grammar.pest");
-    get_pest_grammar()
+    parse_pest_grammar()
         .parse_str(src)
         .expect("meta grammar should parse");
 }
@@ -32,7 +34,7 @@ fn meta_grammar_parses_fully() {
 #[test]
 fn rejects_duplicate_rules() {
     let src = r#"a = { "x" } a = { "y" }"#;
-    let err = convert_pest_source(
+    let err = convert_grammar_source(
         src,
         &ConvertOptions {
             entry_rule: "a".to_string(),
@@ -46,7 +48,7 @@ fn rejects_duplicate_rules() {
 #[test]
 fn rejects_left_recursion() {
     let src = include_str!("fixtures/left_rec.pest");
-    let err = convert_pest_source(
+    let err = convert_grammar_source(
         src,
         &ConvertOptions {
             entry_rule: "a".to_string(),
@@ -63,7 +65,7 @@ fn rejects_left_recursion() {
 #[test]
 fn rejects_unsafe_repeat() {
     let src = r#"main = { ("")* }"#;
-    let err = convert_pest_source(
+    let err = convert_grammar_source(
         src,
         &ConvertOptions {
             entry_rule: "main".to_string(),
@@ -86,7 +88,7 @@ fn committed_generated_snapshots_match_converter() {
             std::fs::read_to_string(&pest_path).unwrap_or_else(|e| panic!("read {pest_path}: {e}"));
         let expected = std::fs::read_to_string(&generated_path)
             .unwrap_or_else(|e| panic!("read {generated_path}: {e}"));
-        let actual = convert_pest_source(
+        let actual = convert_grammar_source(
             &src,
             &ConvertOptions {
                 entry_rule: fixture.entry.clone(),

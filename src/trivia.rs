@@ -70,13 +70,13 @@ pub fn is_silent_rule(rule: &RuleDef) -> bool {
 mod tests {
     use super::*;
     use crate::codegen::prepare_codegen;
-    use crate::grammar::get_pest_grammar;
+    use crate::grammar::parse_pest_grammar;
     use crate::normalize::build_rule_table;
     use marser::parser::Parser;
 
     fn trivia_for(source: &str, entry: &str) -> HashSet<String> {
-        let grammar = get_pest_grammar().parse_str(source).unwrap().0;
-        let table = build_rule_table(&grammar).unwrap();
+        let grammar = parse_pest_grammar().parse_str(source).unwrap().0;
+        let table = build_rule_table(&grammar, crate::syntax::InputSyntax::Pest).unwrap();
         let (graph, _) = prepare_codegen(&table, entry).unwrap();
         compute_trivia_only_rules(&table, &graph)
     }
@@ -126,8 +126,8 @@ pair = @{ word ~ tab ~ word }
 word = @{ ASCII_ALPHA+ }
 main = { SOI ~ pair ~ EOI }
 "#;
-        let grammar = get_pest_grammar().parse_str(src).unwrap().0;
-        let table = build_rule_table(&grammar).unwrap();
+        let grammar = parse_pest_grammar().parse_str(src).unwrap().0;
+        let table = build_rule_table(&grammar, crate::syntax::InputSyntax::Pest).unwrap();
         let (graph, _) = prepare_codegen(&table, "main").unwrap();
         let matcher_only = compute_matcher_only_rules(&table, &graph);
         assert!(matcher_only.contains("WHITESPACE"));
