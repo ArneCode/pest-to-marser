@@ -1,3 +1,25 @@
+//! Convert [Pest](https://pest.rs/) and supported [PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)
+//! grammars into [Marser](https://crates.io/crates/marser) parser combinators.
+//!
+//! The CLI reads a grammar file and prints generated Rust source. The library API
+//! exposes the same conversion pipeline for embedding in other tools.
+//!
+//! # Example
+//!
+//! ```
+//! use grammar_to_marser::{convert_grammar_source, ConvertOptions};
+//!
+//! let rust = convert_grammar_source(
+//!     r#"number = @{ ASCII_DIGIT+ }"#,
+//!     &ConvertOptions {
+//!         entry_rule: "number".to_string(),
+//!         ..Default::default()
+//!     },
+//! )?;
+//! assert!(rust.contains("pub fn grammar"));
+//! # Ok::<(), Vec<grammar_to_marser::ConvertError>>(())
+//! ```
+
 mod ast;
 mod codegen;
 mod convert;

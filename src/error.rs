@@ -205,14 +205,6 @@ impl std::error::Error for ConvertError {}
 
 pub type ConvertResult<T> = Result<T, Vec<ConvertError>>;
 
-pub fn ok_or_errors<T>(errors: Vec<ConvertError>, value: T) -> ConvertResult<T> {
-    if errors.is_empty() {
-        Ok(value)
-    } else {
-        Err(errors)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

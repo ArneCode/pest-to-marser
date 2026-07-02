@@ -1,5 +1,5 @@
 //! Regenerate committed export template snapshots.
-//! Run: cargo run --bin update-export-snapshots
+//! Run: cargo run --features dev-tools --bin update-export-snapshots
 
 use std::fs;
 use std::path::PathBuf;

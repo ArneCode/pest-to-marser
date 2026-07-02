@@ -13,7 +13,7 @@ use crate::specialize::{SpecializationGraph, build_specialization_graph};
 #[allow(unused_imports)]
 pub use comments::extract_rule_source_comments;
 #[allow(unused_imports)]
-pub use naming::{bind_var_name, binding_name, sanitize_ident};
+pub use naming::{bind_var_name, sanitize_ident};
 
 pub struct CodegenOptions {
     pub function_name: String,

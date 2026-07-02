@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 use grammar_to_marser::{
     cargo_toml, convert_grammar_source, default_sample_input, gitignore, lib_rs, main_rs, readme,
@@ -39,8 +40,17 @@ fn materialize_project(
     fs::write(root.join("src/main.rs"), main_rs(project_name, emit_trace)).expect("main.rs");
 }
 
+fn cargo_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn cargo(root: &Path, args: &[&str]) -> std::process::Output {
+    let _guard = cargo_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     Command::new("cargo")
+        .env("CARGO_TARGET_DIR", root.join("target"))
         .args(args)
         .current_dir(root)
         .output()

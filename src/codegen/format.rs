@@ -356,10 +356,6 @@ pub(crate) fn indent_lines(text: &str, column: usize) -> String {
         .join("\n")
 }
 
-fn indent_block(text: &str, column: usize) -> String {
-    indent_lines(text, column)
-}
-
 const MAX_MATCHER_TUPLE_ARITY: usize = 12;
 
 pub(crate) fn render_nested_tuple(parts: &[String]) -> String {

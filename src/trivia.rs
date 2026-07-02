@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::ast::Modifier;
 use crate::expr::MatchingContext;
-use crate::normalize::{RuleDef, RuleTable};
+use crate::normalize::RuleTable;
 use crate::specialize::{SpecializationGraph, collect_rule_deps};
 
 /// Rules reachable only from the `WHITESPACE` / `COMMENT` closure and not from
@@ -60,10 +60,6 @@ pub fn compute_matcher_only_rules(
         }
     }
     rules
-}
-
-pub fn is_silent_rule(rule: &RuleDef) -> bool {
-    rule.modifier == Some(Modifier::Silent)
 }
 
 #[cfg(test)]

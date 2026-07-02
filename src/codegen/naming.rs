@@ -13,15 +13,6 @@ pub fn bind_var_name(rule_name: &str) -> String {
     format!("{}_val", sanitize_ident(rule_name))
 }
 
-pub fn binding_name(sym: &SymKey) -> String {
-    let base = sanitize_ident(&sym.rule);
-    let suffix = match sym.context {
-        MatchingContext::NormalWs => "__nw",
-        MatchingContext::AtomicNoWs => "__anw",
-    };
-    format!("{base}{suffix}")
-}
-
 pub fn sanitize_ident(name: &str) -> String {
     if RUST_KEYWORDS.contains(&name) {
         format!("r#{name}")

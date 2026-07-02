@@ -28,7 +28,7 @@ use super::format::{
 };
 use super::import_needs::{ImportNeeds, compute_import_needs, push_braced_use_list};
 use super::naming::{
-    bind_var_name, binding_name, binding_name_for_graph, contexts_by_rule, sanitize_ident,
+    bind_var_name, binding_name_for_graph, contexts_by_rule, sanitize_ident,
 };
 use super::CodegenOptions;
 
@@ -55,14 +55,11 @@ pub(crate) struct Generator<'a> {
     rule_comments: HashMap<String, String>,
     sym_names: HashMap<SymKey, String>,
     cyclic_syms: HashSet<SymKey>,
-    extra_syms: HashSet<SymKey>,
-    scc_map: HashMap<SymKey, usize>,
     referenced_builtins: HashSet<Builtin>,
     emitted: HashSet<SymKey>,
     needs_ws_repeat_helper: bool,
     needs_ws_repeat_once_helper: bool,
     needs_ci_ch_helper: bool,
-    needs_bounded_repeat: bool,
     import_needs: ImportNeeds,
     recursive_comment_emitted: bool,
     matcher_only: HashSet<String>,
@@ -107,12 +104,10 @@ impl<'a> Generator<'a> {
         }
 
         let mut cyclic_syms = HashSet::new();
-        let mut scc_map = HashMap::new();
-        for (idx, scc) in sccs.iter().enumerate() {
+        for scc in sccs {
             if is_cyclic(scc) {
                 for member in &scc.members {
                     cyclic_syms.insert(member.clone());
-                    scc_map.insert(member.clone(), idx);
                 }
             }
         }
@@ -122,22 +117,6 @@ impl<'a> Generator<'a> {
             if let Some(rule) = graph.rule_map.get(&sym.rule) {
                 collect_builtins(&rule.expr, &mut referenced_builtins);
             }
-        }
-
-        let mut extra_syms = HashSet::new();
-        if table.has_whitespace {
-            let sym = SymKey {
-                rule: "WHITESPACE".to_string(),
-                context: MatchingContext::AtomicNoWs,
-            };
-            extra_syms.insert(sym);
-        }
-        if table.has_comment {
-            let sym = SymKey {
-                rule: "COMMENT".to_string(),
-                context: MatchingContext::AtomicNoWs,
-            };
-            extra_syms.insert(sym);
         }
 
         let has_ws = table.has_whitespace || table.has_comment;
@@ -197,14 +176,11 @@ impl<'a> Generator<'a> {
             rule_comments,
             sym_names,
             cyclic_syms,
-            extra_syms,
-            scc_map,
             referenced_builtins,
             emitted: HashSet::new(),
             needs_ws_repeat_helper,
             needs_ws_repeat_once_helper,
             needs_ci_ch_helper,
-            needs_bounded_repeat,
             import_needs,
             recursive_comment_emitted: false,
             matcher_only,
@@ -1154,78 +1130,5 @@ impl<'a> Generator<'a> {
             return format!("{}.clone()", sanitize_ident(b.name()));
         }
         builtin_matcher_expr(b)
-    }
-
-    fn gen_string_literal(&self, s: &str) -> String {
-        if s.is_empty() {
-            return "capture!(() => ())".to_string();
-        }
-        if s.chars().count() == 1 {
-            let ch = s.chars().next().unwrap();
-            return format!("capture!({ch:?} => ())");
-        }
-        format!("capture!({s:?} => ())")
-    }
-
-    fn gen_insensitive(&self, s: &str) -> String {
-        if s.is_empty() {
-            return "capture!(() => ())".to_string();
-        }
-        let parts: Vec<String> = s.chars().map(|c| format!("ci_ch({c:?})")).collect();
-        format!("capture!({} => ())", render_nested_tuple(&parts))
-    }
-
-    fn gen_builtin(&self, b: Builtin) -> String {
-        if should_hoist_builtin(b) && self.referenced_builtins.contains(&b) {
-            return format!("capture!({}.clone() => ())", sanitize_ident(b.name()));
-        }
-        match b {
-            Builtin::Soi => "start_of_input()".to_string(),
-            Builtin::Eoi => "end_of_input()".to_string(),
-            Builtin::Any => "AnyToken".to_string(),
-            Builtin::Newline => "one_of((\"\\n\", \"\\r\\n\"))".to_string(),
-            Builtin::AsciiDigit => "capture!('0'..='9' => ())".to_string(),
-            Builtin::AsciiNonzeroDigit => "capture!('1'..='9' => ())".to_string(),
-            Builtin::AsciiBinDigit => "one_of(('0', '1'))".to_string(),
-            Builtin::AsciiOctDigit => "capture!('0'..='7' => ())".to_string(),
-            Builtin::AsciiHexDigit => "one_of(('0'..='9', 'a'..='f', 'A'..='F'))".to_string(),
-            Builtin::AsciiAlphaLower => "capture!('a'..='z' => ())".to_string(),
-            Builtin::AsciiAlphaUpper => "capture!('A'..='Z' => ())".to_string(),
-            Builtin::AsciiAlpha => "one_of(('a'..='z', 'A'..='Z'))".to_string(),
-            Builtin::AsciiAlphanumeric => "one_of(('a'..='z', 'A'..='Z', '0'..='9'))".to_string(),
-        }
-    }
-}
-
-fn collect_sym_deps(
-    expr: &Expr,
-    caller_context: MatchingContext,
-    rules: &HashMap<String, RuleDef>,
-    sym_names: &mut HashMap<SymKey, String>,
-) {
-    match expr {
-        Expr::RuleRef(name) => {
-            if let Some(rule) = rules.get(name) {
-                let context = callee_context(caller_context, rule.modifier.as_ref());
-                let sym = SymKey {
-                    rule: name.clone(),
-                    context,
-                };
-                if sym_names.contains_key(&sym) {
-                    return;
-                }
-                sym_names.insert(sym.clone(), binding_name(&sym));
-                collect_sym_deps(&rule.expr, context, rules, sym_names);
-            }
-        }
-        Expr::Sequence(items) | Expr::Choice(items) => {
-            for item in items {
-                collect_sym_deps(item, caller_context, rules, sym_names);
-            }
-        }
-        Expr::Prefix { expr, .. } | Expr::Postfix { expr, .. } | Expr::Tagged { expr, .. } => {
-            collect_sym_deps(expr, caller_context, rules, sym_names);
-        }
-        _ => {}
     }
 }

@@ -1,4 +1,5 @@
-.cursor/debug-*.log
+.cursor/
+syn_test
 /target
 /web/target/
 /web/pkg/

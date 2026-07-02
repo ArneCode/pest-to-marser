@@ -12,7 +12,7 @@ needs_examples() {
 }
 
 if needs_examples; then
-  cargo run --manifest-path "$ROOT/Cargo.toml" --bin generate-web-examples
+  cargo run --manifest-path "$ROOT/Cargo.toml" --features dev-tools --bin generate-web-examples
 fi
 
 wasm-pack build --dev --target web --out-dir pkg

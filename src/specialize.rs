@@ -132,14 +132,6 @@ pub fn callee_context(
     }
 }
 
-pub fn expr_for_sym(graph: &SpecializationGraph, sym: &SymKey) -> Expr {
-    graph
-        .rule_map
-        .get(&sym.rule)
-        .map(|rule| rule.expr.clone())
-        .unwrap_or(Expr::Empty)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,9 +3,29 @@ name = "grammar-to-marser"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "Convert Pest and PEG grammars into Marser parser combinators in Rust"
+readme = "README.md"
+repository = "https://github.com/ArneCode/grammar-to-marser"
+homepage = "https://grammar-to-marser.arnedebo.com"
+authors = ["Arne De Borman <arne.deborman@web.de>"]
+keywords = ["parser", "pest", "peg", "marser", "grammar", "codegen"]
+categories = ["parsing", "command-line-utilities"]
+default-run = "grammar-to-marser"
+exclude = [
+    ".cursor/",
+    ".github/",
+    ".vercelignore",
+    "syn_test",
+    "PLAN.md",
+    "TOFIX.md",
+    "IMPROVE.md",
+    "web/",
+]
 
 [features]
+default = []
 parser-trace = ["marser/parser-trace"]
+dev-tools = []
 
 [lib]
 path = "src/lib.rs"
@@ -32,11 +52,14 @@ toml = "0.8"
 [[bin]]
 name = "update-test-fixtures"
 path = "src/bin/update_test_fixtures.rs"
+required-features = ["dev-tools"]
 
 [[bin]]
 name = "generate-web-examples"
 path = "src/bin/generate_web_examples.rs"
+required-features = ["dev-tools"]
 
 [[bin]]
 name = "update-export-snapshots"
 path = "src/bin/update_export_snapshots.rs"
+required-features = ["dev-tools"]

@@ -120,7 +120,7 @@ fn committed_generated_snapshots_match_converter() {
         .unwrap_or_else(|e| panic!("convert {}: {e:?}", fixture.pest));
         assert_eq!(
             actual, expected,
-            "stale {generated_path} — run: cargo run --bin update-test-fixtures"
+            "stale {generated_path} — run: cargo run --features dev-tools --bin update-test-fixtures"
         );
     }
 }
@@ -145,7 +145,7 @@ fn committed_peg_generated_snapshots_match_converter() {
         .unwrap_or_else(|e| panic!("convert {}: {e:?}", fixture.peg));
         assert_eq!(
             actual, expected,
-            "stale {generated_path} — run: cargo run --bin update-test-fixtures"
+            "stale {generated_path} — run: cargo run --features dev-tools --bin update-test-fixtures"
         );
     }
 }

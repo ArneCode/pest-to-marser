@@ -110,7 +110,7 @@ Repetition and whitespace rules are validated with Pest-style progress checks. U
 cargo test
 
 # Regenerate committed output snapshots after converter changes
-cargo run --bin update-test-fixtures
+cargo run --features dev-tools --bin update-test-fixtures
 ```
 
 The `web/` crate is a WASM build of the converter used by the browser demo.
